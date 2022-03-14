@@ -45,18 +45,29 @@ impl BitBoard {
     pub fn pop_first_one(&mut self) -> Position {
         assert_ne!(self.0, 0);
 
-        let bits = self.0;
         let de_bruijn_number = 0x03f79d71b4cb0a89;
 
         let position = Position::new(
-            DE_BRUIJN_INDICES[(((bits ^ (bits - 1)) * de_bruijn_number) >> 58) as usize],
+            DE_BRUIJN_INDICES[(((self.0 ^ (self.0 - 1)) * de_bruijn_number) >> 58) as usize],
         );
 
         // This is done to set the first one to a 0, since we are popping it.
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
-        self.0 = bits & (bits - 1);
+        self.0 &= self.0 - 1;
 
         position
+    }
+
+    pub fn isolate_first_one(&mut self) -> Self {
+        assert_ne!(self.0, 0);
+
+        let isolated_one = *self & self.not();
+
+        // This is done to set the first one to a 0, since we are popping it.
+        // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
+        self.0 &= self.0 - 1;
+
+        isolated_one
     }
 
     pub fn move_right(self) -> Self {

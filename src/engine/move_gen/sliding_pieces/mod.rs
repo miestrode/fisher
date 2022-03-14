@@ -1,4 +1,5 @@
 // See: https://www.chessprogramming.org/Kogge-Stone_Algorithm#Occluded_Fill
+// NOTE: "slides" do NOT include captures and do allow the piece to NOT move.
 use crate::{
     engine::utility::{NOT_A_FILE, NOT_H_FILE},
     game::board::BitBoard,

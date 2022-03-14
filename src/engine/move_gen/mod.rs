@@ -1,8 +1,7 @@
 pub mod king;
 pub mod knight;
 pub mod pawns;
-pub mod rook;
-pub mod sliding;
+pub mod sliding_pieces;
 
 #[derive(Clone, Copy)]
 pub struct Position(pub u8);
