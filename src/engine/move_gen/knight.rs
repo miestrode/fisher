@@ -5,6 +5,7 @@ use super::{GenMoves, Move, Position};
 struct PsuedoKnightMoveGen {
     friendly_pieces: BitBoard,
     knights: BitBoard,
+
     moves: Vec<Move>,
 }
 

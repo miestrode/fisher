@@ -61,29 +61,30 @@ impl BitBoard {
     pub fn isolate_first_one(&mut self) -> Self {
         assert_ne!(self.0, 0);
 
-        let isolated_one = *self & self.not();
+        // See: https://www.chessprogramming.org/General_Setwise_Operations#Isolation
+        let isolated_one = self.0 & self.0.wrapping_neg(); // Compute the two's complement.
 
         // This is done to set the first one to a 0, since we are popping it.
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
         self.0 &= self.0 - 1;
 
-        isolated_one
+        BitBoard(isolated_one)
     }
 
     pub fn move_right(self) -> Self {
-        BitBoard((self.0 << 1) & NOT_A_FILE.0)
+        self << 1 & NOT_A_FILE
     }
 
     pub fn move_left(self) -> Self {
-        BitBoard((self.0 >> 1) & NOT_H_FILE.0)
+        (self >> 1) & NOT_H_FILE
     }
 
     pub fn move_up(self) -> Self {
-        BitBoard(self.0 << 8)
+        self << 8
     }
 
     pub fn move_down(self) -> Self {
-        BitBoard(self.0 >> 8)
+        self >> 8
     }
 }
 
@@ -253,6 +254,7 @@ impl PlayerState {
 pub struct Board {
     pub white_state: PlayerState,
     pub black_state: PlayerState,
+    pub pinned_pieces: BitBoard,
     pub player_to_play: Player,
 }
 
@@ -261,6 +263,7 @@ impl Board {
         Self {
             white_state: PlayerState::new(Player::White),
             black_state: PlayerState::new(Player::Black),
+            pinned_pieces: BitBoard::empty(),
             player_to_play: Player::White,
         }
     }

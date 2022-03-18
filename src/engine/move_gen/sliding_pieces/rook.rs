@@ -1,6 +1,9 @@
-use crate::game::board::BitBoard;
+use crate::{
+    engine::move_gen::{GenMoves, Move},
+    game::board::BitBoard,
+};
 
-use super::{sliding::get_cross_attacks, GenMoves, Move};
+use super::get_cross_attacks;
 
 struct PsuedoRookMoveGen {
     empty_squares: BitBoard,

@@ -1,9 +1,4 @@
-use std::ops::BitAnd;
-
-use crate::{
-    engine::utility::{NOT_A_FILE, NOT_H_FILE},
-    game::board::{BitBoard, Player},
-};
+use crate::game::board::{BitBoard, Player};
 
 use super::{GenMoves, Move, Position};
 
@@ -44,8 +39,8 @@ impl PsuedoPawnMoveGen {
     fn gen_double_push_board(&self) -> BitBoard {
         !self.occupied_squares
             & match self.player {
-                Player::White => self.pawns.move_up().move_up(),
-                Player::Black => self.pawns.move_down().move_up(),
+                Player::White => self.unmoved_pawns.move_up().move_up(),
+                Player::Black => self.unmoved_pawns.move_down().move_up(),
             }
     }
 

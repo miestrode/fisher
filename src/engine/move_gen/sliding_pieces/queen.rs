@@ -1,21 +1,25 @@
-use crate::game::board::BitBoard;
+use crate::{
+    engine::move_gen::{GenMoves, Move},
+    game::board::BitBoard,
+};
 
-use super::{sliding::get_diagonal_attacks, GenMoves, Move};
+use super::{get_cross_attacks, get_diagonal_attacks};
 
-struct PsuedoBishopMoveGen {
+struct PsuedoQueenMoveGen {
     empty_squares: BitBoard,
     friendly_pieces: BitBoard,
-    rooks: BitBoard,
+    queens: BitBoard,
     moves: Vec<Move>,
 }
 
-impl GenMoves for PsuedoBishopMoveGen {
+impl GenMoves for PsuedoQueenMoveGen {
     fn gen_moves(mut self) -> Vec<Move> {
-        while self.rooks.0 != 0 {
-            let rook = self.rooks.isolate_first_one();
-            let mut attacks = get_diagonal_attacks(rook, self.empty_squares, self.friendly_pieces);
+        while self.queens.0 != 0 {
+            let queen = self.queens.isolate_first_one();
+            let mut attacks = get_cross_attacks(queen, self.empty_squares, self.friendly_pieces)
+                | get_diagonal_attacks(queen, self.empty_squares, self.friendly_pieces);
 
-            let rook_position = self.rooks.pop_first_one();
+            let rook_position = self.queens.pop_first_one();
 
             while attacks.0 != 0 {
                 self.moves.push(Move {

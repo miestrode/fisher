@@ -10,3 +10,14 @@ pub const NOT_A_FILE: BitBoard =
     BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
 pub const NOT_H_FILE: BitBoard =
     BitBoard(0b1111111011111110111111101111111011111110111111101111111011111111);
+
+pub const AVOID_WRAPS: [BitBoard; 8] = [
+    BitBoard(0xfefefefefefefe00),
+    BitBoard(0xfefefefefefefefe),
+    BitBoard(0x00fefefefefefefe),
+    BitBoard(0x00ffffffffffffff),
+    BitBoard(0x007f7f7f7f7f7f7f),
+    BitBoard(0x7f7f7f7f7f7f7f7f),
+    BitBoard(0x7f7f7f7f7f7f7f00),
+    BitBoard(0xffffffffffffff00),
+];
