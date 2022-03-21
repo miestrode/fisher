@@ -5,7 +5,7 @@ pub mod rook;
 // See: https://www.chessprogramming.org/Kogge-Stone_Algorithm#Occluded_Fill
 // NOTE: "slides" do NOT include captures and do allow the piece to NOT move.
 use crate::{
-    engine::utility::{AVOID_WRAPS, NOT_A_FILE, NOT_H_FILE},
+    engine::utility::{NOT_A_FILE, NOT_H_FILE},
     game::board::BitBoard,
 };
 
@@ -60,7 +60,7 @@ fn get_down_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 fn get_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[1];
+    empty &= NOT_H_FILE;
     pieces |= empty & (pieces << 1);
     empty &= empty << 1;
     pieces |= empty & (pieces << 2);
@@ -71,7 +71,7 @@ fn get_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 fn get_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[5];
+    empty &= NOT_A_FILE;
     pieces |= empty & (pieces >> 1);
     empty &= empty >> 1;
     pieces |= empty & (pieces >> 2);
@@ -82,7 +82,7 @@ fn get_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 fn get_up_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[0];
+    empty &= NOT_A_FILE;
     pieces |= empty & (pieces << 9);
     empty &= empty << 9;
     pieces |= empty & (pieces << 18);
@@ -93,7 +93,7 @@ fn get_up_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 fn get_down_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[2];
+    empty &= NOT_A_FILE;
     pieces |= empty & (pieces >> 7);
     empty &= empty >> 7;
     pieces |= empty & (pieces >> 14);
@@ -104,7 +104,7 @@ fn get_down_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard 
 }
 
 fn get_up_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[6];
+    empty &= NOT_H_FILE;
     pieces |= empty & (pieces << 7);
     empty &= empty << 7;
     pieces |= empty & (pieces << 14);
@@ -115,7 +115,7 @@ fn get_up_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 fn get_down_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
-    empty &= AVOID_WRAPS[4];
+    empty &= NOT_H_FILE;
     pieces |= empty & (pieces >> 9);
     empty &= empty >> 9;
     pieces |= empty & (pieces >> 18);
@@ -126,10 +126,10 @@ fn get_down_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
 }
 
 pub fn get_cross_attacks(pieces: BitBoard, empty: BitBoard, friendly_pieces: BitBoard) -> BitBoard {
-    get_up_slides(pieces, empty).move_up()
-        | get_down_slides(pieces, empty).move_down()
-        | get_left_slides(pieces, empty).move_left()
-        | get_right_slides(pieces, empty).move_right() & !friendly_pieces
+    get_up_slides(pieces, empty).move_up(1)
+        | get_down_slides(pieces, empty).move_down(1)
+        | get_left_slides(pieces, empty).move_left(1)
+        | get_right_slides(pieces, empty).move_right(1) & !friendly_pieces
 }
 
 pub fn get_diagonal_attacks(
@@ -137,13 +137,10 @@ pub fn get_diagonal_attacks(
     empty: BitBoard,
     friendly_pieces: BitBoard,
 ) -> BitBoard {
-    get_up_left_slides(pieces, empty).move_up().move_left()
-        | get_up_right_slides(pieces, empty).move_up().move_right()
-        | get_down_left_slides(pieces, empty).move_down().move_left()
-        | get_down_right_slides(pieces, empty)
-            .move_down()
-            .move_right()
-            & !friendly_pieces
+    get_up_left_slides(pieces, empty).move_up_left(1)
+        | get_up_right_slides(pieces, empty).move_up_right(1)
+        | get_down_left_slides(pieces, empty).move_down_left(1)
+        | get_down_right_slides(pieces, empty).move_down_right(1) & !friendly_pieces
 }
 
 // This function considers not moving the piece as a slide.

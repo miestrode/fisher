@@ -1,42 +1,36 @@
-use crate::game::board::BitBoard;
+use crate::game::board::{BitBoard, Piece, PieceKind, PiecePins, Player};
 
-use super::{GenMoves, Move, Position};
+use super::{move_tables::KNIGHT_MOVES, GenMoves, Move};
 
-struct PsuedoKnightMoveGen {
-    friendly_pieces: BitBoard,
-    knights: BitBoard,
-
-    moves: Vec<Move>,
+pub struct KnightMoveGen<'a> {
+    pub player: Player,
+    pub friendly_pieces: BitBoard,
+    pub knights: BitBoard,
+    pub pins: PiecePins,
+    pub check_mask: BitBoard,
+    pub moves: &'a mut Vec<Move>,
 }
 
-// TODO: Optimize this section of code.
-impl PsuedoKnightMoveGen {
-    fn try_gen_move(&mut self, from: Position, to: Position) {
-        if !self.friendly_pieces.get_bit(to) {
-            self.moves.push(Move { from, to });
+impl<'a> GenMoves for KnightMoveGen<'a> {
+    fn gen_moves(self) {
+        while !self.knights.is_empty() {
+            let mut knight = self.knights.isolate_first_one();
+
+            if !(self.pins.get_all_pins() & knight).is_empty() {
+                continue; // Knight is pinned and therefore, cannot move.
+            }
+
+            let knight_pos = knight.pop_first_one();
+            let mut moves =
+                self.check_mask & KNIGHT_MOVES[knight.0 as usize] & !self.friendly_pieces;
+
+            while !moves.is_empty() {
+                self.moves.push(Move {
+                    from: knight_pos,
+                    to: moves.pop_first_one(),
+                    piece_kind: PieceKind::Knight,
+                })
+            }
         }
-    }
-
-    // See: https://www.chessprogramming.org/Knight_Pattern
-    fn gen_knight_moves(&mut self, from: Position) {
-        self.try_gen_move(from, Position(from.0 + 15));
-        self.try_gen_move(from, Position(from.0 + 17));
-        self.try_gen_move(from, Position(from.0 + 6));
-        self.try_gen_move(from, Position(from.0 + 10));
-        self.try_gen_move(from, Position(from.0 - 10));
-        self.try_gen_move(from, Position(from.0 - 6));
-        self.try_gen_move(from, Position(from.0 - 17));
-        self.try_gen_move(from, Position(from.0 - 15));
-    }
-}
-
-impl GenMoves for PsuedoKnightMoveGen {
-    fn gen_moves(mut self) -> Vec<Move> {
-        while self.knights.0 != 0 {
-            let knight_position = self.knights.pop_first_one();
-            self.gen_knight_moves(knight_position);
-        }
-
-        self.moves
     }
 }

@@ -1,29 +1,21 @@
+use crate::game::board::PieceKind;
+
+pub mod generator;
 pub mod king;
 pub mod knight;
+pub mod move_tables;
 pub mod pawns;
 pub mod sliding_pieces;
 
 #[derive(Clone, Copy)]
 pub struct Position(pub u8);
 
-impl Position {
-    pub fn new(value: u8) -> Self {
-        Self(value)
-    }
-}
-
 pub struct Move {
-    from: Position,
-    to: Position,
-}
-
-impl Move {
-    // This assumes the piece making the move is a pawn.
-    pub fn is_double_push(&self) -> bool {
-        (self.to.0 - 16) == self.from.0
-    }
+    pub from: Position,
+    pub to: Position,
+    pub piece_kind: PieceKind, // If we know which piece is moving, it's easier to locate it.
 }
 
 pub trait GenMoves {
-    fn gen_moves(self) -> Vec<Move>;
+    fn gen_moves(self);
 }

@@ -1,34 +1,40 @@
 use crate::{
     engine::move_gen::{GenMoves, Move},
-    game::board::BitBoard,
+    game::board::{BitBoard, Piece, PieceKind, PiecePins, Player},
 };
 
-use super::get_diagonal_attacks;
-
-struct PsuedoBishopMoveGen {
-    empty_squares: BitBoard,
-    friendly_pieces: BitBoard,
-    bishops: BitBoard,
-    moves: Vec<Move>,
+pub struct BishopMoveGen<'a> {
+    pub empty_squares: BitBoard,
+    pub friendly_pieces: BitBoard,
+    pub player: Player,
+    pub bishops: BitBoard,
+    pub pins: PiecePins,
+    pub check_mask: BitBoard,
+    pub moves: &'a mut Vec<Move>,
 }
 
-impl GenMoves for PsuedoBishopMoveGen {
-    fn gen_moves(mut self) -> Vec<Move> {
-        while self.bishops.0 != 0 {
+impl<'a> GenMoves for BishopMoveGen<'a> {
+    fn gen_moves(mut self) {
+        while !self.bishops.is_empty() {
             let bishop = self.bishops.isolate_first_one();
-            let mut attacks =
-                get_diagonal_attacks(bishop, self.empty_squares, self.friendly_pieces);
 
-            let rook_position = self.bishops.pop_first_one();
+            if !(bishop & self.pins.get_hv_pins()).is_empty() {
+                continue; // The bishop is pinned on the cross and so it cannot move at all.
+            }
 
-            while attacks.0 != 0 {
+            let mut attacks = self.check_mask
+                & super::get_diagonal_attacks(bishop, self.empty_squares, self.friendly_pieces)
+                & self.pins.get_pin_mask(bishop);
+
+            let bishop_position = self.bishops.pop_first_one();
+
+            while !attacks.is_empty() {
                 self.moves.push(Move {
-                    from: rook_position,
+                    from: bishop_position,
                     to: attacks.pop_first_one(),
+                    piece_kind: PieceKind::Bishop,
                 })
             }
         }
-
-        self.moves
     }
 }

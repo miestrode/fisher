@@ -1,12 +1,12 @@
 use std::{
     fmt::{Display, Write},
-    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Shl, Shr},
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub},
 };
 
 use bitvec::{order::Lsb0, view::BitView};
 
 use crate::engine::{
-    move_gen::Position,
+    move_gen::{Move, Position},
     utility::{DE_BRUIJN_INDICES, NOT_A_FILE, NOT_H_FILE},
 };
 
@@ -31,14 +31,47 @@ impl BitBoard {
             )
             .unwrap(),
         )
+        .h_flip()
     }
 
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self(0)
     }
 
     pub fn get_bit(&self, position: Position) -> bool {
-        self.0.view_bits::<Lsb0>()[{ position.0 } as usize]
+        self.0.view_bits::<Lsb0>()[position.0 as usize]
+    }
+
+    pub fn toggle_bit(&mut self, position: Position) {
+        self.0 = self.0 ^ !(1 << position.0);
+    }
+
+    pub fn make_move(&mut self, to: Position, from: Position) {
+        self.toggle_bit(from); // Assumed to be on.
+        self.toggle_bit(to); // Assumed to be off.
+    }
+
+    pub fn v_flip(self) -> Self {
+        Self(self.0.swap_bytes())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    // See: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating#Horizontal
+    pub fn h_flip(self) -> Self {
+        let mut bits = self.0;
+
+        let k_1 = 0x5555555555555555;
+        let k_2 = 0x3333333333333333;
+        let k_4 = 0x0f0f0f0f0f0f0f0f;
+
+        bits = ((bits >> 1) & k_1) + 2 * (bits & k_1);
+        bits = ((bits >> 2) & k_2) + 4 * (bits & k_2);
+        bits = ((bits >> 4) & k_4) + 16 * (bits & k_4);
+
+        Self(bits)
     }
 
     // See: https://www.chessprogramming.org/BitScan#De_Bruijn_Multiplication
@@ -47,7 +80,7 @@ impl BitBoard {
 
         let de_bruijn_number = 0x03f79d71b4cb0a89;
 
-        let position = Position::new(
+        let position = Position(
             DE_BRUIJN_INDICES[(((self.0 ^ (self.0 - 1)) * de_bruijn_number) >> 58) as usize],
         );
 
@@ -58,7 +91,7 @@ impl BitBoard {
         position
     }
 
-    pub fn isolate_first_one(&mut self) -> Self {
+    pub fn isolate_first_one(mut self) -> Self {
         assert_ne!(self.0, 0);
 
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Isolation
@@ -71,29 +104,45 @@ impl BitBoard {
         BitBoard(isolated_one)
     }
 
-    pub fn move_right(self) -> Self {
-        self << 1 & NOT_A_FILE
+    pub const fn move_right(self, amount: u32) -> Self {
+        self << amount & NOT_A_FILE
     }
 
-    pub fn move_left(self) -> Self {
-        (self >> 1) & NOT_H_FILE
+    pub const fn move_left(self, amount: u32) -> Self {
+        (self >> amount) & NOT_H_FILE
     }
 
-    pub fn move_up(self) -> Self {
-        self << 8
+    pub const fn move_up(self, amount: u32) -> Self {
+        self << (8 * amount)
     }
 
-    pub fn move_down(self) -> Self {
-        self >> 8
+    pub const fn move_down(self, amount: u32) -> Self {
+        self >> (8 * amount)
+    }
+
+    pub const fn move_up_right(self, amount: u32) -> Self {
+        self << (9 * amount)
+    }
+
+    pub const fn move_up_left(self, amount: u32) -> Self {
+        self << (7 * amount)
+    }
+
+    pub const fn move_down_right(self, amount: u32) -> Self {
+        self >> (7 * amount)
+    }
+
+    pub const fn move_down_left(self, amount: u32) -> Self {
+        self >> (9 * amount)
     }
 }
 
 // These are utility implementations for conciseness so not every used operation is implemented.
-impl BitOr for BitBoard {
-    type Output = BitBoard;
+impl const BitOr for BitBoard {
+    type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        BitBoard(self.0 | rhs.0)
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -103,11 +152,11 @@ impl BitOrAssign for BitBoard {
     }
 }
 
-impl BitAnd for BitBoard {
-    type Output = BitBoard;
+impl const BitAnd for BitBoard {
+    type Output = Self;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        BitBoard(self.0 & rhs.0)
+        Self(self.0 & rhs.0)
     }
 }
 
@@ -117,31 +166,47 @@ impl BitAndAssign for BitBoard {
     }
 }
 
-impl Not for BitBoard {
-    type Output = BitBoard;
+impl const Not for BitBoard {
+    type Output = Self;
 
     fn not(self) -> Self::Output {
-        BitBoard(!self.0)
+        Self(!self.0)
     }
 }
 
-impl Shr<u32> for BitBoard {
-    type Output = BitBoard;
+impl const Shr<u32> for BitBoard {
+    type Output = Self;
 
     fn shr(self, rhs: u32) -> Self::Output {
-        BitBoard(self.0 >> rhs)
+        Self(self.0 >> rhs)
     }
 }
 
-impl Shl<u32> for BitBoard {
-    type Output = BitBoard;
+impl const Shl<u32> for BitBoard {
+    type Output = Self;
 
     fn shl(self, rhs: u32) -> Self::Output {
-        BitBoard(self.0 << rhs)
+        Self(self.0 << rhs)
     }
 }
 
-mod piece_boards {
+impl const BitXor<BitBoard> for BitBoard {
+    type Output = BitBoard;
+
+    fn bitxor(self, rhs: BitBoard) -> Self::Output {
+        Self(self.0 ^ rhs.0)
+    }
+}
+
+impl const Sub<BitBoard> for BitBoard {
+    type Output = BitBoard;
+
+    fn sub(self, rhs: BitBoard) -> Self::Output {
+        self & rhs ^ self
+    }
+}
+
+pub mod piece_boards {
     use super::BitBoard;
 
     pub const WHITE_KING: BitBoard =
@@ -166,6 +231,52 @@ mod piece_boards {
     pub const BLACK_BISHOPS: BitBoard = BitBoard(WHITE_BISHOPS.0.reverse_bits());
     pub const BLACK_KNIGHTS: BitBoard = BitBoard(WHITE_KNIGHTS.0.reverse_bits());
     pub const BLACK_PAWNS: BitBoard = BitBoard(WHITE_PAWNS.0.reverse_bits());
+}
+
+#[derive(Clone, Copy)]
+pub struct PiecePins {
+    pub horizontal: BitBoard,
+    pub vertical: BitBoard,
+    pub diagonal: BitBoard,
+    pub anti_diagonal: BitBoard,
+}
+
+impl PiecePins {
+    pub fn new() -> Self {
+        Self {
+            horizontal: BitBoard::empty(),
+            vertical: BitBoard::empty(),
+            diagonal: BitBoard::empty(),
+            anti_diagonal: BitBoard::empty(),
+        }
+    }
+
+    // This will return the set of all squares this piece can occupy based on the active pins.
+    pub fn get_pin_mask(&self, piece: BitBoard) -> BitBoard {
+        if !(piece & self.horizontal).is_empty() {
+            self.horizontal
+        } else if !(piece & self.vertical).is_empty() {
+            self.vertical
+        } else if !(piece & self.diagonal).is_empty() {
+            self.diagonal
+        } else if !(piece & self.anti_diagonal).is_empty() {
+            self.anti_diagonal
+        } else {
+            !BitBoard::empty()
+        }
+    }
+
+    pub fn get_hv_pins(&self) -> BitBoard {
+        self.horizontal | self.vertical
+    }
+
+    pub fn get_diag_pins(&self) -> BitBoard {
+        self.diagonal | self.anti_diagonal
+    }
+
+    pub fn get_all_pins(&self) -> BitBoard {
+        self.get_diag_pins() | self.get_hv_pins()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -222,7 +333,8 @@ pub struct PlayerState {
     pub knights: BitBoard,
     // These two bit-boards must ALWAYS be synchronized.
     pub pawns: BitBoard,
-    pub unmoved_pawns: BitBoard,
+    pub occupied: BitBoard,
+    pub pins: PiecePins,
 }
 
 impl PlayerState {
@@ -235,7 +347,13 @@ impl PlayerState {
                 bishops: WHITE_BISHOPS,
                 knights: WHITE_KNIGHTS,
                 pawns: WHITE_PAWNS,
-                unmoved_pawns: WHITE_PAWNS,
+                occupied: WHITE_KING
+                    | WHITE_QUEENS
+                    | WHITE_ROOKS
+                    | WHITE_BISHOPS
+                    | WHITE_KNIGHTS
+                    | WHITE_PAWNS,
+                pins: PiecePins::new(),
             },
             Player::Black => Self {
                 king: BLACK_KING,
@@ -244,7 +362,13 @@ impl PlayerState {
                 bishops: BLACK_BISHOPS,
                 knights: BLACK_KNIGHTS,
                 pawns: BLACK_PAWNS,
-                unmoved_pawns: BLACK_PAWNS,
+                occupied: BLACK_KING
+                    | BLACK_QUEENS
+                    | BLACK_ROOKS
+                    | BLACK_BISHOPS
+                    | BLACK_KNIGHTS
+                    | BLACK_PAWNS,
+                pins: PiecePins::new(),
             },
         }
     }
@@ -254,7 +378,7 @@ impl PlayerState {
 pub struct Board {
     pub white_state: PlayerState,
     pub black_state: PlayerState,
-    pub pinned_pieces: BitBoard,
+    pub check_mask: BitBoard,
     pub player_to_play: Player,
 }
 
@@ -263,9 +387,85 @@ impl Board {
         Self {
             white_state: PlayerState::new(Player::White),
             black_state: PlayerState::new(Player::Black),
-            pinned_pieces: BitBoard::empty(),
+            check_mask: !BitBoard::empty(),
             player_to_play: Player::White,
         }
+    }
+
+    pub fn make_move(&mut self, chess_move: Move) {
+        match self.player_to_play {}
+    }
+
+    // All moves used are assumed to be legal, as the move generator the engine has doesn't generate any psuedo-legal moves.
+    fn make_white_move(&mut self, chess_move: Move) {
+        match chess_move.piece_kind.piece_kind {
+            PieceKind::Pawn => self
+                .white_state
+                .pawns
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Queen => self
+                .white_state
+                .queens
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Rook => self
+                .white_state
+                .rooks
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Bishop => self
+                .white_state
+                .bishops
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::King => self
+                .white_state
+                .king
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Knight => self
+                .white_state
+                .knights
+                .make_move(chess_move.to, chess_move.from),
+        }
+
+        self.update_white_pins();
+    }
+
+    // Same thing here.
+    fn make_black_move(&mut self, chess_move: Move) {
+        match chess_move.piece_kind.piece_kind {
+            PieceKind::Pawn => self
+                .black_state
+                .pawns
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Queen => self
+                .black_state
+                .queens
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Rook => self
+                .black_state
+                .rooks
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Bishop => self
+                .black_state
+                .bishops
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::King => self
+                .black_state
+                .king
+                .make_move(chess_move.to, chess_move.from),
+            PieceKind::Knight => self
+                .black_state
+                .knights
+                .make_move(chess_move.to, chess_move.from),
+        }
+
+        self.update_black_pins();
+    }
+
+    fn update_white_pins(&mut self) {
+        todo!()
+    }
+
+    fn update_black_pins(&mut self) {
+        todo!()
     }
 
     pub fn get_piece(&self, position: Position) -> Option<Piece> {
