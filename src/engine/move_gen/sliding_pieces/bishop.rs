@@ -1,12 +1,11 @@
 use crate::{
     engine::move_gen::{GenMoves, Move},
-    game::board::{BitBoard, Piece, PieceKind, PiecePins, Player},
+    game::board::{BitBoard, PieceKind, PiecePins},
 };
 
 pub struct BishopMoveGen<'a> {
     pub empty_squares: BitBoard,
     pub friendly_pieces: BitBoard,
-    pub player: Player,
     pub bishops: BitBoard,
     pub pins: PiecePins,
     pub check_mask: BitBoard,
@@ -23,7 +22,7 @@ impl<'a> GenMoves for BishopMoveGen<'a> {
             }
 
             let mut attacks = self.check_mask
-                & super::get_diagonal_attacks(bishop, self.empty_squares, self.friendly_pieces)
+                & super::get_diagonal_slides(bishop, self.empty_squares, self.friendly_pieces)
                 & self.pins.get_pin_mask(bishop);
 
             let bishop_position = self.bishops.pop_first_one();

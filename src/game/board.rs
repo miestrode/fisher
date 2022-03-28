@@ -6,7 +6,14 @@ use std::{
 use bitvec::{order::Lsb0, view::BitView};
 
 use crate::engine::{
-    move_gen::{Move, Position},
+    move_gen::{
+        sliding_pieces::{
+            get_down_left_slides, get_down_right_slides, get_down_slides, get_left_slides,
+            get_rel_dir, get_right_slides, get_up_left_slides, get_up_right_slides, get_up_slides,
+            RelDirection,
+        },
+        Move, Position,
+    },
     utility::{DE_BRUIJN_INDICES, NOT_A_FILE, NOT_H_FILE},
 };
 
@@ -51,12 +58,16 @@ impl BitBoard {
         self.toggle_bit(to); // Assumed to be off.
     }
 
-    pub fn v_flip(self) -> Self {
-        Self(self.0.swap_bytes())
-    }
-
     pub fn is_empty(&self) -> bool {
         self.0 == 0
+    }
+
+    pub fn is_single_1(&self) -> bool {
+        self.0.is_power_of_two()
+    }
+
+    pub fn v_flip(self) -> Self {
+        Self(self.0.swap_bytes())
     }
 
     // See: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating#Horizontal
@@ -393,12 +404,19 @@ impl Board {
     }
 
     pub fn make_move(&mut self, chess_move: Move) {
-        match self.player_to_play {}
+        match self.player_to_play {
+            Player::White => self.make_white_move(chess_move),
+            Player::Black => self.make_black_move(chess_move),
+        }
+
+        // Moves can actually effect both pin masks at the same time!
+        self.update_white_pins();
+        self.update_black_pins();
     }
 
     // All moves used are assumed to be legal, as the move generator the engine has doesn't generate any psuedo-legal moves.
     fn make_white_move(&mut self, chess_move: Move) {
-        match chess_move.piece_kind.piece_kind {
+        match chess_move.piece_kind {
             PieceKind::Pawn => self
                 .white_state
                 .pawns
@@ -424,13 +442,11 @@ impl Board {
                 .knights
                 .make_move(chess_move.to, chess_move.from),
         }
-
-        self.update_white_pins();
     }
 
     // Same thing here.
     fn make_black_move(&mut self, chess_move: Move) {
-        match chess_move.piece_kind.piece_kind {
+        match chess_move.piece_kind {
             PieceKind::Pawn => self
                 .black_state
                 .pawns
@@ -456,17 +472,162 @@ impl Board {
                 .knights
                 .make_move(chess_move.to, chess_move.from),
         }
-
-        self.update_black_pins();
     }
 
+    // TODO: Review this code.
     fn update_white_pins(&mut self) {
-        todo!()
+        let mut pinners =
+            self.black_state.rooks | self.black_state.bishops | self.black_state.queens;
+        let empty = !pinners;
+        let king_pos = self.white_state.king.clone().pop_first_one();
+
+        self.white_state.pins = PiecePins::new();
+
+        while !pinners.is_empty() {
+            let pinner_pos = pinners.pop_first_one();
+
+            match get_rel_dir(king_pos, pinner_pos) {
+                RelDirection::UpLeft => {
+                    let path = get_up_left_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.anti_diagonal |= path;
+                    }
+                }
+                RelDirection::Up => {
+                    let path = get_up_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.vertical |= path;
+                    }
+                }
+                RelDirection::UpRight => {
+                    let path = get_up_right_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.diagonal |= path;
+                    }
+                }
+                RelDirection::Right => {
+                    let path = get_right_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.horizontal |= path;
+                    }
+                }
+                RelDirection::DownRight => {
+                    let path =
+                        get_down_right_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.anti_diagonal = path;
+                    }
+                }
+                RelDirection::Down => {
+                    let path = get_down_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.vertical = path;
+                    }
+                }
+                RelDirection::DownLeft => {
+                    let path =
+                        get_down_left_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.diagonal = path;
+                    }
+                }
+                RelDirection::Left => {
+                    let path = get_left_slides(self.white_state.king, empty, BitBoard::empty());
+
+                    if (path & self.white_state.occupied).is_single_1() {
+                        self.white_state.pins.horizontal = path;
+                    }
+                }
+                RelDirection::Other => continue, // The piece doesn't attack the king, therefore it cannot possible pin. Continue to the next one.
+            };
+        }
     }
 
+    // TODO: Review this code.
     fn update_black_pins(&mut self) {
-        todo!()
+        let mut pinners =
+            self.white_state.rooks | self.white_state.bishops | self.white_state.queens;
+        let empty = !pinners;
+
+        let king_pos = self.black_state.king.clone().pop_first_one();
+
+        self.black_state.pins = PiecePins::new();
+
+        while !pinners.is_empty() {
+            let pinner_pos = pinners.pop_first_one();
+
+            match get_rel_dir(king_pos, pinner_pos) {
+                RelDirection::UpLeft => {
+                    let path = get_up_left_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.anti_diagonal |= path;
+                    }
+                }
+                RelDirection::Up => {
+                    let path = get_up_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.vertical |= path;
+                    }
+                }
+                RelDirection::UpRight => {
+                    let path = get_up_right_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.diagonal |= path;
+                    }
+                }
+                RelDirection::Right => {
+                    let path = get_right_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.horizontal |= path;
+                    }
+                }
+                RelDirection::DownRight => {
+                    let path =
+                        get_down_right_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.anti_diagonal = path;
+                    }
+                }
+                RelDirection::Down => {
+                    let path = get_down_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.vertical = path;
+                    }
+                }
+                RelDirection::DownLeft => {
+                    let path =
+                        get_down_left_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.diagonal = path;
+                    }
+                }
+                RelDirection::Left => {
+                    let path = get_left_slides(self.black_state.king, empty, BitBoard::empty());
+
+                    if (path & self.black_state.occupied).is_single_1() {
+                        self.black_state.pins.horizontal = path;
+                    }
+                }
+                RelDirection::Other => continue, // The piece doesn't attack the king, therefore it cannot possible pin. Continue to the next one.
+            };
+        }
     }
+
+    pub fn update_white_attacks(&mut self) {}
 
     pub fn get_piece(&self, position: Position) -> Option<Piece> {
         if self.white_state.king.get_bit(position) {

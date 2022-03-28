@@ -1,13 +1,12 @@
 use crate::{
     engine::move_gen::{GenMoves, Move},
-    game::board::{BitBoard, Piece, PieceKind, PiecePins, Player},
+    game::board::{BitBoard, PieceKind, PiecePins},
 };
 
 pub struct QueenMoveGen<'a> {
     pub empty_squares: BitBoard,
     pub friendly_pieces: BitBoard,
     pub queens: BitBoard,
-    pub player: Player,
     pub pins: PiecePins,
     pub check_mask: BitBoard,
     pub moves: &'a mut Vec<Move>,
@@ -19,8 +18,8 @@ impl<'a> GenMoves for QueenMoveGen<'a> {
             let queen = self.queens.isolate_first_one();
 
             let mut attacks = self.check_mask
-                & super::get_cross_attacks(queen, self.empty_squares, self.friendly_pieces)
-                | super::get_diagonal_attacks(queen, self.empty_squares, self.friendly_pieces)
+                & super::get_cross_slides(queen, self.empty_squares, self.friendly_pieces)
+                | super::get_diagonal_slides(queen, self.empty_squares, self.friendly_pieces)
                     & self.pins.get_pin_mask(queen);
 
             let queen_position = self.queens.pop_first_one();

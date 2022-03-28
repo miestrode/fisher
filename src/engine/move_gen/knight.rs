@@ -1,9 +1,8 @@
-use crate::game::board::{BitBoard, Piece, PieceKind, PiecePins, Player};
+use crate::game::board::{BitBoard, PieceKind, PiecePins};
 
 use super::{move_tables::KNIGHT_MOVES, GenMoves, Move};
 
 pub struct KnightMoveGen<'a> {
-    pub player: Player,
     pub friendly_pieces: BitBoard,
     pub knights: BitBoard,
     pub pins: PiecePins,

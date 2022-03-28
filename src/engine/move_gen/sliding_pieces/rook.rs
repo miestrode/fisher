@@ -1,12 +1,11 @@
 use crate::{
     engine::move_gen::{GenMoves, Move},
-    game::board::{BitBoard, Piece, PieceKind, PiecePins, Player},
+    game::board::{BitBoard, PieceKind, PiecePins},
 };
 
 pub struct RookMoveGen<'a> {
     pub empty_squares: BitBoard,
     pub friendly_pieces: BitBoard,
-    pub player: Player,
     pub rooks: BitBoard,
     pub pins: PiecePins,
     pub check_mask: BitBoard,
@@ -23,7 +22,7 @@ impl<'a> GenMoves for RookMoveGen<'a> {
             }
 
             let mut attacks = self.check_mask
-                & super::get_cross_attacks(rook, self.empty_squares, self.friendly_pieces)
+                & super::get_cross_slides(rook, self.empty_squares, self.friendly_pieces)
                 & self.pins.get_pin_mask(rook);
 
             let rook_position = self.rooks.pop_first_one();

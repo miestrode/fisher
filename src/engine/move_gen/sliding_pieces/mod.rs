@@ -11,55 +11,86 @@ use crate::{
 
 use super::Position;
 
-#[derive(Debug, Clone, Copy)]
 pub enum RelDirection {
-    Flat,
-    LeftDiagonal,
-    Straight,
-    RightDiagonal,
+    UpLeft,
+    Up,
+    UpRight,
+    Right,
+    DownRight,
+    Down,
+    DownLeft,
+    Left,
     Other,
 }
 
-pub fn gen_relative_direction(a: Position, b: Position) -> RelDirection {
-    let (a, b) = (a.0, b.0);
+pub fn get_rel_dir(Position(observer): Position, Position(position): Position) -> RelDirection {
+    assert_ne!(observer, position);
+    let position_is_ahead = position > observer;
 
     // The only way the modulos can be equal is if you can reach it from A and B by removing or adding nines, since that's how you go about the board diagonally.
-    if a % 9 == b % 9 {
-        RelDirection::RightDiagonal
-    } else if a % 7 == b % 7 {
+    if observer % 9 == position % 9 {
+        if position_is_ahead {
+            RelDirection::UpRight
+        } else {
+            RelDirection::DownLeft
+        }
+    } else if observer % 7 == position % 7 {
         // Same argument, but this time remember that we can add 7 to go on the "leftwards" diagonal.
-        RelDirection::LeftDiagonal
-    } else if a / 8 == b / 8 {
-        // Remember: In Rust, division of integers is floored.
-        RelDirection::Flat
-    } else if a % 8 == b % 8 {
-        RelDirection::Straight
+        if position_is_ahead {
+            RelDirection::UpLeft
+        } else {
+            RelDirection::DownRight
+        }
+    } else if observer / 8 == position / 8 {
+        if position_is_ahead {
+            RelDirection::Right
+        } else {
+            RelDirection::Left
+        }
+    } else if observer % 8 == position % 8 {
+        if position_is_ahead {
+            RelDirection::Up
+        } else {
+            RelDirection::Down
+        }
     } else {
         RelDirection::Other
     }
 }
 
-fn get_up_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_up_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     pieces |= empty & (pieces << 8);
     empty &= empty << 8;
     pieces |= empty & (pieces << 16);
     empty &= empty << 16;
     pieces |= empty & (pieces << 32);
 
-    pieces
+    pieces.move_up(1) & !friendly_pieces
 }
 
-fn get_down_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_down_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     pieces |= empty & (pieces >> 8);
     empty &= empty >> 8;
     pieces |= empty & (pieces >> 16);
     empty &= empty >> 16;
     pieces |= empty & (pieces >> 32);
 
-    pieces
+    pieces.move_down(1) & !friendly_pieces
 }
 
-fn get_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_left_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_H_FILE;
     pieces |= empty & (pieces << 1);
     empty &= empty << 1;
@@ -67,10 +98,14 @@ fn get_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
     empty &= empty << 2;
     pieces |= empty & (pieces << 4);
 
-    pieces
+    pieces.move_left(1) & !friendly_pieces
 }
 
-fn get_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_right_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_A_FILE;
     pieces |= empty & (pieces >> 1);
     empty &= empty >> 1;
@@ -78,10 +113,14 @@ fn get_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
     empty &= empty >> 2;
     pieces |= empty & (pieces >> 4);
 
-    pieces
+    pieces.move_right(1) & !friendly_pieces
 }
 
-fn get_up_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_up_right_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_A_FILE;
     pieces |= empty & (pieces << 9);
     empty &= empty << 9;
@@ -89,10 +128,14 @@ fn get_up_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
     empty &= empty << 18;
     pieces |= empty & (pieces << 36);
 
-    pieces
+    pieces.move_up_right(1) & !friendly_pieces
 }
 
-fn get_down_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_down_right_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_A_FILE;
     pieces |= empty & (pieces >> 7);
     empty &= empty >> 7;
@@ -100,10 +143,14 @@ fn get_down_right_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard 
     empty &= empty >> 14;
     pieces |= empty & (pieces >> 28);
 
-    pieces
+    pieces.move_down_right(1) & !friendly_pieces
 }
 
-fn get_up_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_up_left_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_H_FILE;
     pieces |= empty & (pieces << 7);
     empty &= empty << 7;
@@ -111,10 +158,14 @@ fn get_up_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
     empty &= empty << 14;
     pieces |= empty & (pieces << 28);
 
-    pieces
+    pieces.move_up_left(1) & !friendly_pieces
 }
 
-fn get_down_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
+pub fn get_down_left_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
     empty &= NOT_H_FILE;
     pieces |= empty & (pieces >> 9);
     empty &= empty >> 9;
@@ -122,37 +173,27 @@ fn get_down_left_slides(mut pieces: BitBoard, mut empty: BitBoard) -> BitBoard {
     empty &= empty >> 18;
     pieces |= empty & (pieces >> 36);
 
-    pieces
+    pieces.move_down_left(1) & !friendly_pieces
 }
 
-pub fn get_cross_attacks(pieces: BitBoard, empty: BitBoard, friendly_pieces: BitBoard) -> BitBoard {
-    get_up_slides(pieces, empty).move_up(1)
-        | get_down_slides(pieces, empty).move_down(1)
-        | get_left_slides(pieces, empty).move_left(1)
-        | get_right_slides(pieces, empty).move_right(1) & !friendly_pieces
-}
-
-pub fn get_diagonal_attacks(
-    pieces: BitBoard,
-    empty: BitBoard,
+pub fn get_cross_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
     friendly_pieces: BitBoard,
 ) -> BitBoard {
-    get_up_left_slides(pieces, empty).move_up_left(1)
-        | get_up_right_slides(pieces, empty).move_up_right(1)
-        | get_down_left_slides(pieces, empty).move_down_left(1)
-        | get_down_right_slides(pieces, empty).move_down_right(1) & !friendly_pieces
+    get_up_slides(pieces, empty, friendly_pieces)
+        | get_right_slides(pieces, empty, friendly_pieces)
+        | get_down_slides(pieces, empty, friendly_pieces)
+        | get_left_slides(pieces, empty, friendly_pieces)
 }
 
-// This function considers not moving the piece as a slide.
-pub fn get_slides_on_empty_board(pieces: BitBoard) -> BitBoard {
-    let empty = !BitBoard::empty();
-
-    get_up_slides(pieces, empty)
-        | get_left_slides(pieces, empty)
-        | get_right_slides(pieces, empty)
-        | get_down_slides(pieces, empty)
-        | get_up_left_slides(pieces, empty)
-        | get_down_left_slides(pieces, empty)
-        | get_up_right_slides(pieces, empty)
-        | get_down_right_slides(pieces, empty)
+pub fn get_diagonal_slides(
+    mut pieces: BitBoard,
+    mut empty: BitBoard,
+    friendly_pieces: BitBoard,
+) -> BitBoard {
+    get_up_left_slides(pieces, empty, friendly_pieces)
+        | get_up_right_slides(pieces, empty, friendly_pieces)
+        | get_down_right_slides(pieces, empty, friendly_pieces)
+        | get_down_left_slides(pieces, empty, friendly_pieces)
 }

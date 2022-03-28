@@ -30,7 +30,6 @@ impl MoveGen {
 
                 KnightMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.white_state.occupied,
                     knights: self.board.white_state.knights,
                     pins: self.board.white_state.pins,
@@ -40,7 +39,6 @@ impl MoveGen {
 
                 BishopMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.white_state.occupied,
                     empty_squares,
                     pins: self.board.white_state.pins,
@@ -51,7 +49,6 @@ impl MoveGen {
 
                 RookMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.white_state.occupied,
                     empty_squares,
                     pins: self.board.white_state.pins,
@@ -62,7 +59,6 @@ impl MoveGen {
 
                 QueenMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.white_state.occupied,
                     empty_squares,
                     pins: self.board.white_state.pins,
@@ -84,7 +80,6 @@ impl MoveGen {
 
                 KnightMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.black_state.occupied,
                     pins: self.board.black_state.pins,
                     knights: self.board.black_state.knights,
@@ -94,7 +89,6 @@ impl MoveGen {
 
                 BishopMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.black_state.occupied,
                     empty_squares,
                     pins: self.board.black_state.pins,
@@ -105,7 +99,6 @@ impl MoveGen {
 
                 RookMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.black_state.occupied,
                     empty_squares,
                     pins: self.board.black_state.pins,
@@ -116,7 +109,6 @@ impl MoveGen {
 
                 QueenMoveGen {
                     moves: &mut self.moves,
-                    player: self.board.player_to_play,
                     friendly_pieces: self.board.black_state.occupied,
                     empty_squares,
                     pins: self.board.black_state.pins,

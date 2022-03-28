@@ -1,11 +1,10 @@
-use crate::game::board::{BitBoard, Piece, PieceKind, Player};
+use crate::game::board::{BitBoard, PieceKind};
 
 use super::{move_tables::KING_MOVES, GenMoves, Move};
 
 struct PsuedoKingMoveGen<'a> {
     friendly_pieces: BitBoard,
     king: BitBoard,
-    player: Player,
     enemy_attacks: BitBoard,
     moves: &'a mut Vec<Move>,
 }
