@@ -1,52 +1,28 @@
-use crate::game::board::PieceKind;
-
-use super::{
+use crate::engine::move_gen::{
     slides::{
-        get_down_attacks, get_down_left_attacks, get_down_right_attacks, get_left_attacks,
-        get_right_attacks, get_up_attacks, get_up_left_attacks, get_up_right_attacks,
+        get_down_attacks, get_down_left_attacks, get_down_right_attacks, get_right_attacks,
+        get_up_attacks, get_up_left_attacks, get_up_right_attacks,
     },
-    Move, PieceAttackGen, Position,
+    PieceAttackGen,
 };
 
-impl PieceAttackGen<'_, '_> {
+impl PieceAttackGen<'_> {
     pub fn gen_queen_moves(&mut self) {
         while self.pieces.is_not_empty() {
-            let queen = self.pieces.isolate_first_one();
+            let queen = self.pieces.pfo_as_bitboard();
 
-            self.attacks |= self.update_enemy_check_mask(get_right_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_up_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_left_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_down_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_up_right_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_up_left_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_down_left_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) | self.update_enemy_check_mask(get_down_right_attacks(
-                queen,
-                self.empty_squares,
-                self.friendly_pieces,
-            )) & self.check_mask
-                & self.pins.get_pin_mask(queen);
+            let attacks = self.update_ecm_for_sliding(get_right_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_up_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_up_left_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_down_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_up_right_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_up_left_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_down_left_attacks(queen, self.empty_squares))
+                | self.update_ecm_for_sliding(get_down_right_attacks(queen, self.empty_squares))
+                    & self.check_mask
+                    & self.pins.get_pin_mask(queen);
+
+            *self.attacks |= attacks;
         }
     }
 }

@@ -12,15 +12,13 @@ impl PieceMoveGen<'_, '_> {
             & self.enemy_pieces
             & !(self.pins.get_hv_pins() | self.pins.diagonal)
             & NOT_A_FILE
-            & self.pieces.move_up_left(1);
+            & self.pieces.move_up_left();
 
         let mut right_attacks = self.check_mask
             & self.enemy_pieces
             & !(self.pins.get_hv_pins() | self.pins.anti_diagonal)
             & NOT_H_FILE
-            & self.pieces.move_up_right(1);
-
-        self.attacks |= left_attacks | right_attacks;
+            & self.pieces.move_up_right();
 
         while left_attacks.is_not_empty() {
             let target = left_attacks.pop_first_one();
@@ -44,8 +42,14 @@ impl PieceMoveGen<'_, '_> {
     }
 
     pub fn gen_white_pawn_pushes(&mut self) {
-        let mut pushes = self.pieces.move_up(1);
-        let mut double_pushes = (self.pieces & SECOND_RANK).move_up(2);
+        let mut pushes = self.check_mask
+            & self.empty_squares
+            & !(self.pins.get_diag_pins() | self.pins.horizontal)
+            & self.pieces.move_up(1);
+        let mut double_pushes = self.check_mask
+            & self.empty_squares
+            & !(self.pins.get_diag_pins() | self.pins.horizontal)
+            & (self.pieces & SECOND_RANK).move_up(2);
 
         while pushes.is_not_empty() {
             let target = pushes.pop_first_one();

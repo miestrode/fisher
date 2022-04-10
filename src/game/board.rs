@@ -54,7 +54,7 @@ impl BitBoard {
     }
 
     pub fn toggle_bit(&mut self, position: Position) {
-        self.0 = self.0 ^ !(1 << position.0);
+        self.0 = self.0 ^ (1 << position.0);
     }
 
     pub fn make_move(&mut self, to: Position, from: Position) {
@@ -100,7 +100,8 @@ impl BitBoard {
         let de_bruijn_number = 0x03f79d71b4cb0a89;
 
         let position = Position(
-            DE_BRUIJN_INDICES[(((self.0 ^ (self.0 - 1)) * de_bruijn_number) >> 58) as usize],
+            DE_BRUIJN_INDICES
+                [(((self.0 ^ (self.0 - 1)).wrapping_mul(de_bruijn_number)) >> 58) as usize],
         );
 
         // This is done to set the first one to a 0, since we are popping it.
@@ -110,7 +111,7 @@ impl BitBoard {
         position
     }
 
-    pub fn isolate_first_one(&mut self) -> Self {
+    pub fn pfo_as_bitboard(&mut self) -> Self {
         assert_ne!(self.0, 0);
 
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Isolation
@@ -123,12 +124,29 @@ impl BitBoard {
         BitBoard(isolated_one)
     }
 
-    pub const fn move_right(self, amount: u32) -> Self {
-        self << amount & NOT_A_FILE
+    pub fn pfo_with_bitboard(&mut self) -> (Position, Self) {
+        assert_ne!(self.0, 0);
+
+        // See: https://www.chessprogramming.org/General_Setwise_Operations#Isolation
+        let isolated_one = self.0 & self.0.wrapping_neg(); // Compute the two's complement.
+
+        // This is done to set the first one to a 0, since we are popping it.
+        // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
+        self.0 &= self.0 - 1;
+
+        (
+            Position(isolated_one.trailing_zeros()),
+            BitBoard(isolated_one),
+        )
     }
 
-    pub const fn move_left(self, amount: u32) -> Self {
-        (self >> amount) & NOT_H_FILE
+    // You are not able to move with an amount left or right due to wrapping issues. That is fine though, as the codebase doesn't need those features.
+    pub const fn move_right(self) -> Self {
+        (self << 1) & NOT_A_FILE
+    }
+
+    pub const fn move_left(self) -> Self {
+        (self >> 1) & NOT_H_FILE
     }
 
     pub const fn move_up(self, amount: u32) -> Self {
@@ -139,20 +157,20 @@ impl BitBoard {
         self >> (8 * amount)
     }
 
-    pub const fn move_up_right(self, amount: u32) -> Self {
-        self << (9 * amount)
+    pub const fn move_up_right(self) -> Self {
+        (self << 9) & NOT_A_FILE
     }
 
-    pub const fn move_up_left(self, amount: u32) -> Self {
-        self << (7 * amount)
+    pub const fn move_up_left(self) -> Self {
+        (self << 7) & NOT_H_FILE
     }
 
-    pub const fn move_down_right(self, amount: u32) -> Self {
-        self >> (7 * amount)
+    pub const fn move_down_right(self) -> Self {
+        (self >> 7) & NOT_A_FILE
     }
 
-    pub const fn move_down_left(self, amount: u32) -> Self {
-        self >> (9 * amount)
+    pub const fn move_down_left(self) -> Self {
+        (self >> 9) & NOT_H_FILE
     }
 }
 
@@ -253,14 +271,14 @@ pub mod piece_boards {
 }
 
 #[derive(Clone, Copy)]
-pub struct PiecePins {
+pub struct Pins {
     pub horizontal: BitBoard,
     pub vertical: BitBoard,
     pub diagonal: BitBoard,
     pub anti_diagonal: BitBoard,
 }
 
-impl PiecePins {
+impl Pins {
     pub fn new() -> Self {
         Self {
             horizontal: BitBoard::empty(),
@@ -272,13 +290,13 @@ impl PiecePins {
 
     // This will return the set of all squares this piece can occupy based on the active pins.
     pub fn get_pin_mask(&self, piece: BitBoard) -> BitBoard {
-        if !(piece & self.horizontal).is_not_empty() {
+        if (piece & self.horizontal).is_not_empty() {
             self.horizontal
-        } else if !(piece & self.vertical).is_not_empty() {
+        } else if (piece & self.vertical).is_not_empty() {
             self.vertical
-        } else if !(piece & self.diagonal).is_not_empty() {
+        } else if (piece & self.diagonal).is_not_empty() {
             self.diagonal
-        } else if !(piece & self.anti_diagonal).is_not_empty() {
+        } else if (piece & self.anti_diagonal).is_not_empty() {
             self.anti_diagonal
         } else {
             !BitBoard::empty()
@@ -298,7 +316,7 @@ impl PiecePins {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum PieceKind {
     King,
     Queen,
@@ -306,6 +324,12 @@ pub enum PieceKind {
     Bishop,
     Knight,
     Pawn,
+}
+
+#[derive(Clone, Copy)]
+pub enum Player {
+    White,
+    Black,
 }
 
 #[derive(Clone, Copy)]
@@ -338,12 +362,6 @@ impl Display for Piece {
 }
 
 #[derive(Clone, Copy)]
-pub enum Player {
-    White,
-    Black,
-}
-
-#[derive(Clone, Copy)]
 pub struct PlayerState {
     pub king: BitBoard,
     pub queens: BitBoard,
@@ -354,7 +372,7 @@ pub struct PlayerState {
     pub occupied: BitBoard,
     pub attacks: BitBoard,
     pub king_must_move: bool,
-    pub pins: PiecePins,
+    pub pins: Pins,
     pub check_mask: BitBoard,
 }
 
@@ -376,7 +394,7 @@ impl PlayerState {
                     | WHITE_PAWNS,
                 attacks: BitBoard::empty(), // White plays first, and so this will be updated.
                 check_mask: BitBoard::full(),
-                pins: PiecePins::new(),
+                pins: Pins::new(),
                 king_must_move: false,
             },
             Player::Black => Self {
@@ -393,10 +411,21 @@ impl PlayerState {
                     | BLACK_KNIGHTS
                     | BLACK_PAWNS,
                 attacks: BitBoard::empty(), // At the first turn, black's attack data is useless, as any first move cannot cause check.
-                pins: PiecePins::new(),
+                pins: Pins::new(),
                 king_must_move: false,
                 check_mask: BitBoard::full(),
             },
+        }
+    }
+
+    pub fn get_bitboard(&mut self, piece_kind: PieceKind) -> &mut BitBoard {
+        match piece_kind {
+            PieceKind::King => &mut self.king,
+            PieceKind::Queen => &mut self.queens,
+            PieceKind::Rook => &mut self.rooks,
+            PieceKind::Bishop => &mut self.bishops,
+            PieceKind::Knight => &mut self.knights,
+            PieceKind::Pawn => &mut self.pawns,
         }
     }
 }
@@ -406,15 +435,23 @@ pub struct Board {
     pub white_state: PlayerState,
     pub black_state: PlayerState,
     pub player_to_play: Player,
+    pub board_state: [Option<Piece>; 64],
 }
 
 impl Board {
     pub fn new() -> Self {
-        Self {
+        let mut board = Self {
             white_state: PlayerState::new(Player::White),
             black_state: PlayerState::new(Player::Black),
             player_to_play: Player::White,
+            board_state: [None; 64],
+        };
+
+        for square in 0..64 {
+            board.board_state[square as usize] = board.get_piece_slow(Position(square));
         }
+
+        board
     }
 
     pub fn make_move(&mut self, chess_move: Move) {
@@ -426,201 +463,143 @@ impl Board {
         match self.player_to_play {
             Player::White => {
                 self.make_white_move(chess_move);
+                AttackGen { board: self }.gen_attacks();
+
+                self.player_to_play = Player::Black;
             }
             Player::Black => {
                 self.make_black_move(chess_move);
+                AttackGen { board: self }.gen_attacks();
+
+                self.player_to_play = Player::White;
             }
         }
 
-        AttackGen { board: self }.gen_attacks();
+        self.board_state
+            .swap(chess_move.origin.0 as usize, chess_move.target.0 as usize);
+        self.board_state[chess_move.origin.0 as usize] = None; // The swap could have been with a piece in case the move is a capture.
 
         // Moves can actually effect both pin masks at the same time!
-        self.update_white_pins();
-        self.update_black_pins();
+        self.white_state.pins = self.update_pins(self.white_state, self.black_state);
+        self.black_state.pins = self.update_pins(self.black_state, self.white_state);
     }
 
     // All moves used are assumed to be legal, as the move generator the engine has doesn't generate any psuedo-legal moves.
     fn make_white_move(&mut self, chess_move: Move) {
         match chess_move.piece_kind {
-            PieceKind::Pawn => self.white_state.pawns,
-            PieceKind::Queen => self.white_state.queens,
-            PieceKind::Rook => self.white_state.rooks,
-            PieceKind::Bishop => self.white_state.bishops,
-            PieceKind::King => self.white_state.king,
-            PieceKind::Knight => self.white_state.knights,
+            PieceKind::Queen => &mut self.white_state.queens,
+            PieceKind::Rook => &mut self.white_state.rooks,
+            PieceKind::Bishop => &mut self.white_state.bishops,
+            PieceKind::King => &mut self.white_state.king,
+            PieceKind::Knight => &mut self.white_state.knights,
+            PieceKind::Pawn => &mut self.white_state.pawns,
         }
-        .make_move(chess_move.target, chess_move.origin)
+        .make_move(chess_move.target, chess_move.origin);
+
+        self.white_state
+            .occupied
+            .make_move(chess_move.target, chess_move.origin);
+
+        if let Some(Piece { piece_kind, .. }) = self.get_piece(chess_move.target) {
+            self.black_state
+                .get_bitboard(piece_kind)
+                .toggle_bit(chess_move.target);
+        }
     }
 
     // Same thing here.
     fn make_black_move(&mut self, chess_move: Move) {
-        match chess_move.piece_kind {
-            PieceKind::Pawn => self.black_state.pawns,
-            PieceKind::Queen => self.black_state.queens,
-            PieceKind::Rook => self.black_state.rooks,
-            PieceKind::Bishop => self.black_state.bishops,
-            PieceKind::King => self.black_state.king,
-            PieceKind::Knight => self.black_state.knights,
+        self.black_state
+            .get_bitboard(chess_move.piece_kind)
+            .make_move(chess_move.target, chess_move.origin);
+
+        self.black_state
+            .occupied
+            .make_move(chess_move.target, chess_move.origin);
+
+        if let Some(Piece { piece_kind, .. }) = self.get_piece(chess_move.target) {
+            self.white_state
+                .get_bitboard(piece_kind)
+                .toggle_bit(chess_move.target);
         }
-        .make_move(chess_move.target, chess_move.origin)
     }
 
     // TODO: Review this code.
-    fn update_white_pins(&mut self) {
-        let mut pinners =
-            self.black_state.rooks | self.black_state.bishops | self.black_state.queens;
+    fn update_pins(&mut self, state: PlayerState, enemy_state: PlayerState) -> Pins {
+        let mut pinners = enemy_state.rooks | enemy_state.bishops | enemy_state.queens;
         let empty = !pinners;
-        let king_pos = self.white_state.king.clone().pop_first_one();
+        let king_pos = state.king.clone().pop_first_one();
 
-        self.white_state.pins = PiecePins::new();
+        let mut pins = Pins::new();
 
-        while !pinners.is_not_empty() {
+        while pinners.is_not_empty() {
             let pinner_pos = pinners.pop_first_one();
 
             match get_rel_dir(king_pos, pinner_pos) {
                 RelDirection::UpLeft => {
-                    let path = get_up_left_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_up_left_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.anti_diagonal |= path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.anti_diagonal |= path;
                     }
                 }
                 RelDirection::Up => {
-                    let path = get_up_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_up_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.vertical |= path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.vertical |= path;
                     }
                 }
                 RelDirection::UpRight => {
-                    let path =
-                        get_up_right_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_up_right_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.diagonal |= path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.diagonal |= path;
                     }
                 }
                 RelDirection::Right => {
-                    let path = get_right_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_right_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.horizontal |= path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.horizontal |= path;
                     }
                 }
                 RelDirection::DownRight => {
-                    let path =
-                        get_down_right_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_down_right_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.anti_diagonal = path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.anti_diagonal = path;
                     }
                 }
                 RelDirection::Down => {
-                    let path = get_down_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_down_attacks(state.king, empty);
 
-                    if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.vertical = path;
+                    if (path & state.occupied).is_single_1() {
+                        pins.vertical = path;
                     }
                 }
                 RelDirection::DownLeft => {
-                    let path =
-                        get_down_left_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_down_left_attacks(state.king, empty);
 
                     if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.diagonal = path;
+                        pins.diagonal = path;
                     }
                 }
                 RelDirection::Left => {
-                    let path = get_left_attacks(self.white_state.king, empty, BitBoard::empty());
+                    let path = get_left_attacks(state.king, empty);
 
                     if (path & self.white_state.occupied).is_single_1() {
-                        self.white_state.pins.horizontal = path;
+                        pins.horizontal = path;
                     }
                 }
                 RelDirection::Other => continue, // The piece doesn't attack the king, therefore it cannot possible pin. Continue to the next one.
             };
         }
+
+        pins
     }
 
-    // TODO: Review this code.
-    fn update_black_pins(&mut self) {
-        let mut pinners =
-            self.white_state.rooks | self.white_state.bishops | self.white_state.queens;
-        let empty = !pinners;
-
-        let king_pos = self.black_state.king.clone().pop_first_one();
-
-        self.black_state.pins = PiecePins::new();
-
-        while !pinners.is_not_empty() {
-            let pinner_pos = pinners.pop_first_one();
-
-            match get_rel_dir(king_pos, pinner_pos) {
-                RelDirection::UpLeft => {
-                    let path = get_up_left_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.anti_diagonal |= path;
-                    }
-                }
-                RelDirection::Up => {
-                    let path = get_up_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.vertical |= path;
-                    }
-                }
-                RelDirection::UpRight => {
-                    let path =
-                        get_up_right_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.diagonal |= path;
-                    }
-                }
-                RelDirection::Right => {
-                    let path = get_right_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.horizontal |= path;
-                    }
-                }
-                RelDirection::DownRight => {
-                    let path =
-                        get_down_right_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.anti_diagonal = path;
-                    }
-                }
-                RelDirection::Down => {
-                    let path = get_down_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.vertical = path;
-                    }
-                }
-                RelDirection::DownLeft => {
-                    let path =
-                        get_down_left_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.diagonal = path;
-                    }
-                }
-                RelDirection::Left => {
-                    let path = get_left_attacks(self.black_state.king, empty, BitBoard::empty());
-
-                    if (path & self.black_state.occupied).is_single_1() {
-                        self.black_state.pins.horizontal = path;
-                    }
-                }
-                RelDirection::Other => continue, // The piece doesn't attack the king, therefore it cannot possible pin. Continue to the next one.
-            };
-        }
-    }
-
-    pub fn get_piece(&self, position: Position) -> Option<Piece> {
+    fn get_piece_slow(&self, position: Position) -> Option<Piece> {
         if self.white_state.king.get_bit(position) {
             Some(Piece {
                 piece_kind: PieceKind::King,
@@ -629,7 +608,7 @@ impl Board {
         } else if self.white_state.queens.get_bit(position) {
             Some(Piece {
                 piece_kind: PieceKind::Queen,
-                player: Player::Black,
+                player: Player::White,
             })
         } else if self.white_state.rooks.get_bit(position) {
             Some(Piece {
@@ -684,5 +663,9 @@ impl Board {
         } else {
             None
         }
+    }
+
+    pub fn get_piece(&self, position: Position) -> Option<Piece> {
+        self.board_state[position.0 as usize]
     }
 }

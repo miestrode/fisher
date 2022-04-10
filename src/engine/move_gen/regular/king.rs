@@ -1,6 +1,7 @@
-use crate::game::board::PieceKind;
-
-use super::{move_tables::KING_MOVES, Move, PieceMoveGen};
+use crate::{
+    engine::move_gen::{move_tables::KING_MOVES, Move, PieceMoveGen},
+    game::board::PieceKind,
+};
 
 impl PieceMoveGen<'_, '_> {
     pub fn gen_king_moves(&mut self) {

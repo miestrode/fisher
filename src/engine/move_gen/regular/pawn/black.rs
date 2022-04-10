@@ -9,17 +9,17 @@ use crate::{
 impl PieceMoveGen<'_, '_> {
     pub fn gen_black_pawn_attacks(&mut self) {
         let mut left_attacks = self.check_mask
+            & !self.friendly_pieces
             & self.enemy_pieces
             & !(self.pins.get_hv_pins() | self.pins.anti_diagonal)
             & NOT_A_FILE
-            & self.pieces.move_down_left(1);
+            & self.pieces.move_down_left();
         let mut right_attacks = self.check_mask
+            & !self.friendly_pieces
             & self.enemy_pieces
             & !(self.pins.get_hv_pins() | self.pins.diagonal)
             & NOT_H_FILE
-            & self.pieces.move_down_right(1);
-
-        self.attacks |= left_attacks | right_attacks;
+            & self.pieces.move_down_right();
 
         while left_attacks.is_not_empty() {
             let target = left_attacks.pop_first_one();

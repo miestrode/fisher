@@ -1,6 +1,7 @@
-use crate::game::board::PieceKind;
-
-use super::{move_tables::KNIGHT_MOVES, Move, PieceMoveGen};
+use crate::{
+    engine::move_gen::{move_tables::KNIGHT_MOVES, Move, PieceMoveGen},
+    game::board::PieceKind,
+};
 
 impl PieceMoveGen<'_, '_> {
     pub fn gen_knight_moves(&mut self) {
@@ -9,7 +10,7 @@ impl PieceMoveGen<'_, '_> {
 
             // A knight cannot be pinned, and move.
             let mut moves = self.check_mask
-                & self.friendly_pieces
+                & !self.friendly_pieces
                 & !self.pins.get_all_pins()
                 & KNIGHT_MOVES[origin.0 as usize];
 
