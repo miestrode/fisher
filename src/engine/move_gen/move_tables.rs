@@ -1,6 +1,6 @@
 use crate::game::board::BitBoard;
 
-macro_rules! gen_all_moves {
+macro_rules! gen_move_table {
     ($function:expr) => {{
         let mut square = 0;
         let mut moves = [BitBoard::empty(); 64];
@@ -39,7 +39,7 @@ const fn gen_king_moves(square: usize) -> BitBoard {
 }
 
 // This is a look-up table for each move a knight could make in a given square. The index of the move bitboard is the origin square of the knight.
-pub const KNIGHT_MOVES: [BitBoard; 64] = gen_all_moves!(gen_knight_moves);
+pub const KNIGHT_MOVES: [BitBoard; 64] = gen_move_table!(gen_knight_moves);
 
 // Same deal, but for the king.
-pub const KING_MOVES: [BitBoard; 64] = gen_all_moves!(gen_king_moves);
+pub const KING_MOVES: [BitBoard; 64] = gen_move_table!(gen_king_moves);
