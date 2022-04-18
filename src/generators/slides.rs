@@ -1,8 +1,5 @@
 // See: https://www.chessprogramming.org/Kogge-Stone_Algorithm#Occluded_Fill
-use crate::{
-    engine::utility::{NOT_A_FILE, NOT_H_FILE},
-    game::board::BitBoard,
-};
+use crate::{BitBoard, NOT_A_FILE, NOT_H_FILE};
 
 use super::Position;
 

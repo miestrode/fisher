@@ -1,4 +1,4 @@
-use crate::game::board::BitBoard;
+use crate::BitBoard;
 
 macro_rules! gen_move_table {
     ($function:expr) => {{

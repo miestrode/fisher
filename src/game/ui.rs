@@ -1,8 +1,6 @@
-use crate::{engine::move_gen::Position, game::board::Board};
+use crate::{game::board::Board, generators::Position, BitBoard, Piece, PieceKind, Player};
 
 use std::fmt::{self, Display, Write};
-
-use super::board::{BitBoard, Player};
 
 impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
@@ -43,5 +41,28 @@ impl Display for BitBoard {
         }
 
         Ok(())
+    }
+}
+
+impl Display for Piece {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_char(match self.player {
+            Player::White => match self.piece_kind {
+                PieceKind::King => '♔',
+                PieceKind::Queen => '♕',
+                PieceKind::Rook => '♖',
+                PieceKind::Bishop => '♗',
+                PieceKind::Knight => '♘',
+                PieceKind::Pawn => '♙',
+            },
+            Player::Black => match self.piece_kind {
+                PieceKind::King => '♚',
+                PieceKind::Queen => '♛',
+                PieceKind::Rook => '♜',
+                PieceKind::Bishop => '♝',
+                PieceKind::Knight => '♞',
+                PieceKind::Pawn => '♟',
+            },
+        })
     }
 }
