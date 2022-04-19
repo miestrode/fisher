@@ -13,10 +13,10 @@ pub const DE_BRUIJN_INDICES: [u32; 64] = [
     39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63,
 ];
 
-pub const NOT_A_FILE: BitBoard =
-    BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
 pub const NOT_H_FILE: BitBoard =
-    BitBoard(0b1111111011111110111111101111111011111110111111101111111011111111);
+    BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
+pub const NOT_A_FILE: BitBoard =
+    BitBoard(0b1111111011111110111111101111111011111110111111101111111011111110);
 
 pub const SECOND_RANK: BitBoard =
     BitBoard(0b0000000000000000000000000000000000000000000000001111111100000000);
@@ -185,19 +185,19 @@ impl BitBoard {
     }
 
     pub const fn move_up_right(self) -> Self {
-        (self << 9) & NOT_H_FILE
+        (self << 9) & NOT_A_FILE
     }
 
     pub const fn move_up_left(self) -> Self {
-        (self << 7) & NOT_A_FILE
+        (self << 7) & NOT_H_FILE
     }
 
     pub const fn move_down_right(self) -> Self {
-        (self >> 7) & NOT_H_FILE
+        (self >> 7) & NOT_A_FILE
     }
 
     pub const fn move_down_left(self) -> Self {
-        (self >> 9) & NOT_A_FILE
+        (self >> 9) & NOT_H_FILE
     }
 }
 

@@ -34,7 +34,7 @@ impl Display for BitBoard {
                 if self.get_bit(Position((64 - row * 8) + column)) {
                     f.write_char('1')?;
                 } else {
-                    f.write_char('0')?;
+                    f.write_char('.')?;
                 }
             }
             writeln!(f)?;

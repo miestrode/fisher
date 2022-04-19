@@ -187,14 +187,14 @@ impl MoveGen {
     }
 
     pub fn gen_knight_moves(&mut self) {
-        while self.active.knights.is_not_empty() {
-            let origin = self.active.knights.pop_first_one();
+        // A knight cannot be pinned and move.
+        let mut knights = self.active.knights & !self.active.pins.get_all_pins();
 
-            // A knight cannot be pinned, and move.
-            let mut moves = self.active.check_mask
-                & !self.active.occupied
-                & !self.active.pins.get_all_pins()
-                & KNIGHT_MOVES[origin.0 as usize];
+        while knights.is_not_empty() {
+            let origin = knights.pop_first_one();
+
+            let mut moves =
+                self.active.check_mask & !self.active.occupied & KNIGHT_MOVES[origin.0 as usize];
 
             while moves.is_not_empty() {
                 let target = moves.pop_first_one();

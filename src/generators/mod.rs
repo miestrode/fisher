@@ -75,13 +75,13 @@ impl<'brd> AttackGen<'brd> {
     }
 
     fn gen_attacks(&mut self, player_to_play: Player) {
-        self.gen_king_moves();
+        self.gen_king_attacks();
 
         if !self.active.king_must_move {
-            self.gen_queen_moves();
-            self.gen_rook_moves();
-            self.gen_bishop_moves();
-            self.gen_knight_moves();
+            self.gen_queen_attacks();
+            self.gen_rook_attacks();
+            self.gen_bishop_attacks();
+            self.gen_knight_attacks();
 
             match player_to_play {
                 Player::White => self.gen_white_pawn_attacks(),
