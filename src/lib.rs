@@ -50,6 +50,10 @@ impl BitBoard {
         Self(u64::MAX)
     }
 
+    pub fn count_ones(&self) -> u32 {
+        self.0.count_ones()
+    }
+
     pub fn get_bit(&self, position: Position) -> bool {
         ((self.0 >> position.0) & 1) == 1
     }
@@ -91,6 +95,10 @@ impl BitBoard {
 
     pub fn is_full(&self) -> bool {
         self.0 == u64::MAX
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
     }
 
     pub fn v_flip(self) -> Self {
@@ -177,19 +185,19 @@ impl BitBoard {
     }
 
     pub const fn move_up_right(self) -> Self {
-        (self << 9) & NOT_A_FILE
+        (self << 9) & NOT_H_FILE
     }
 
     pub const fn move_up_left(self) -> Self {
-        (self << 7) & NOT_H_FILE
+        (self << 7) & NOT_A_FILE
     }
 
     pub const fn move_down_right(self) -> Self {
-        (self >> 7) & NOT_A_FILE
+        (self >> 7) & NOT_H_FILE
     }
 
     pub const fn move_down_left(self) -> Self {
-        (self >> 9) & NOT_H_FILE
+        (self >> 9) & NOT_A_FILE
     }
 }
 

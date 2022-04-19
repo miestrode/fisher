@@ -2,11 +2,7 @@ use crate::{NOT_A_FILE, NOT_H_FILE};
 
 use super::{
     move_tables::{KING_MOVES, KNIGHT_MOVES},
-    slides::{
-        get_down_attacks, get_down_left_attacks, get_down_right_attacks, get_left_attacks,
-        get_right_attacks, get_up_attacks, get_up_left_attacks, get_up_right_attacks,
-    },
-    AttackGen,
+    slides, AttackGen,
 };
 
 impl AttackGen<'_> {
@@ -38,16 +34,16 @@ impl AttackGen<'_> {
         let allow_anti_diagonal_pins = !self.active.pins.get_ape_anti_diagonal();
 
         *self.attacks |= self.active.check_mask
-            & (get_up_right_attacks(
+            & (slides::get_up_right_attacks(
                 self.active.bishops & allow_diagonal_pins,
                 self.empty_squares,
-            ) | get_up_left_attacks(
+            ) | slides::get_up_left_attacks(
                 self.active.bishops & allow_anti_diagonal_pins,
                 self.empty_squares,
-            ) | get_down_left_attacks(
+            ) | slides::get_down_left_attacks(
                 self.active.bishops & allow_diagonal_pins,
                 self.empty_squares,
-            ) | get_down_right_attacks(
+            ) | slides::get_down_right_attacks(
                 self.active.bishops & allow_anti_diagonal_pins,
                 self.empty_squares,
             ));
@@ -76,29 +72,31 @@ impl AttackGen<'_> {
         let allow_vertical_pins = !self.active.pins.get_ape_vertical();
 
         *self.attacks |= self.active.check_mask
-            & (get_up_right_attacks(self.active.queens & allow_diagonal_pins, self.empty_squares)
-                | get_up_left_attacks(
-                    self.active.queens & allow_anti_diagonal_pins,
-                    self.empty_squares,
-                )
-                | get_down_left_attacks(
-                    self.active.queens & allow_diagonal_pins,
-                    self.empty_squares,
-                )
-                | get_down_right_attacks(
-                    self.active.queens & allow_anti_diagonal_pins,
-                    self.empty_squares,
-                )
-                | get_up_attacks(self.active.queens & allow_vertical_pins, self.empty_squares)
-                | get_right_attacks(
-                    self.active.queens & allow_horizontal_pins,
-                    self.empty_squares,
-                )
-                | get_down_attacks(self.active.queens & allow_vertical_pins, self.empty_squares)
-                | get_left_attacks(
-                    self.active.queens & allow_horizontal_pins,
-                    self.empty_squares,
-                ));
+            & (slides::get_up_right_attacks(
+                self.active.queens & allow_diagonal_pins,
+                self.empty_squares,
+            ) | slides::get_up_left_attacks(
+                self.active.queens & allow_anti_diagonal_pins,
+                self.empty_squares,
+            ) | slides::get_down_left_attacks(
+                self.active.queens & allow_diagonal_pins,
+                self.empty_squares,
+            ) | slides::get_down_right_attacks(
+                self.active.queens & allow_anti_diagonal_pins,
+                self.empty_squares,
+            ) | slides::get_up_attacks(
+                self.active.queens & allow_vertical_pins,
+                self.empty_squares,
+            ) | slides::get_right_attacks(
+                self.active.queens & allow_horizontal_pins,
+                self.empty_squares,
+            ) | slides::get_down_attacks(
+                self.active.queens & allow_vertical_pins,
+                self.empty_squares,
+            ) | slides::get_left_attacks(
+                self.active.queens & allow_horizontal_pins,
+                self.empty_squares,
+            ));
     }
 
     pub fn gen_rook_moves(&mut self) {
@@ -106,13 +104,16 @@ impl AttackGen<'_> {
         let allow_vertical_pins = !self.active.pins.get_ape_vertical();
 
         *self.attacks |= self.active.check_mask
-            & (get_up_attacks(self.active.rooks & allow_vertical_pins, self.empty_squares)
-                | get_right_attacks(
+            & (slides::get_up_attacks(self.active.rooks & allow_vertical_pins, self.empty_squares)
+                | slides::get_right_attacks(
                     self.active.rooks & allow_horizontal_pins,
                     self.empty_squares,
                 )
-                | get_down_attacks(self.active.rooks & allow_vertical_pins, self.empty_squares)
-                | get_left_attacks(
+                | slides::get_down_attacks(
+                    self.active.rooks & allow_vertical_pins,
+                    self.empty_squares,
+                )
+                | slides::get_left_attacks(
                     self.active.rooks & allow_horizontal_pins,
                     self.empty_squares,
                 ));

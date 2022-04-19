@@ -76,14 +76,17 @@ impl<'brd> AttackGen<'brd> {
 
     fn gen_attacks(&mut self, player_to_play: Player) {
         self.gen_king_moves();
-        self.gen_queen_moves();
-        self.gen_rook_moves();
-        self.gen_bishop_moves();
-        self.gen_knight_moves();
 
-        match player_to_play {
-            Player::White => self.gen_white_pawn_attacks(),
-            Player::Black => self.gen_black_pawn_attacks(),
+        if !self.active.king_must_move {
+            self.gen_queen_moves();
+            self.gen_rook_moves();
+            self.gen_bishop_moves();
+            self.gen_knight_moves();
+
+            match player_to_play {
+                Player::White => self.gen_white_pawn_attacks(),
+                Player::Black => self.gen_black_pawn_attacks(),
+            }
         }
     }
 }
@@ -111,19 +114,22 @@ impl MoveGen {
 
     fn gen_moves(&mut self, player_to_play: Player) {
         self.gen_king_moves();
-        self.gen_queen_moves();
-        self.gen_rook_moves();
-        self.gen_bishop_moves();
-        self.gen_knight_moves();
 
-        match player_to_play {
-            Player::White => {
-                self.gen_white_pawn_pushes();
-                self.gen_white_pawn_attacks();
-            }
-            Player::Black => {
-                self.gen_black_pawn_pushes();
-                self.gen_black_pawn_attacks();
+        if !self.active.king_must_move {
+            self.gen_queen_moves();
+            self.gen_rook_moves();
+            self.gen_bishop_moves();
+            self.gen_knight_moves();
+
+            match player_to_play {
+                Player::White => {
+                    self.gen_white_pawn_pushes();
+                    self.gen_white_pawn_attacks();
+                }
+                Player::Black => {
+                    self.gen_black_pawn_pushes();
+                    self.gen_black_pawn_attacks();
+                }
             }
         }
     }

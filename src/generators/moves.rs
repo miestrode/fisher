@@ -2,11 +2,7 @@ use crate::{PieceKind, NOT_A_FILE, NOT_H_FILE, SECOND_RANK, SEVENTH_RANK};
 
 use super::{
     move_tables::{KING_MOVES, KNIGHT_MOVES},
-    slides::{
-        get_down_attacks, get_down_left_attacks, get_down_right_attacks, get_left_attacks,
-        get_right_attacks, get_up_attacks, get_up_left_attacks, get_up_right_attacks,
-    },
-    Move, MoveGen,
+    slides, Move, MoveGen,
 };
 
 impl MoveGen {
@@ -154,10 +150,10 @@ impl MoveGen {
                 continue;
             }
 
-            let mut moves = (get_up_right_attacks(bishop, self.empty_squares)
-                | get_up_left_attacks(bishop, self.empty_squares)
-                | get_down_left_attacks(bishop, self.empty_squares)
-                | get_down_right_attacks(bishop, self.empty_squares))
+            let mut moves = (slides::get_up_right_attacks(bishop, self.empty_squares)
+                | slides::get_up_left_attacks(bishop, self.empty_squares)
+                | slides::get_down_left_attacks(bishop, self.empty_squares)
+                | slides::get_down_right_attacks(bishop, self.empty_squares))
                 & !self.active.occupied
                 & self.active.check_mask
                 & self.active.pins.get_pin_mask(bishop);
@@ -216,14 +212,14 @@ impl MoveGen {
         while self.active.bishops.is_not_empty() {
             let (origin, queen) = self.active.bishops.pfo_with_bitboard();
 
-            let mut moves = (get_right_attacks(queen, self.empty_squares)
-                | get_up_attacks(queen, self.empty_squares)
-                | get_left_attacks(queen, self.empty_squares)
-                | get_down_attacks(queen, self.empty_squares)
-                | get_up_right_attacks(queen, self.empty_squares)
-                | get_up_left_attacks(queen, self.empty_squares)
-                | get_down_left_attacks(queen, self.empty_squares)
-                | get_down_right_attacks(queen, self.empty_squares))
+            let mut moves = (slides::get_right_attacks(queen, self.empty_squares)
+                | slides::get_up_attacks(queen, self.empty_squares)
+                | slides::get_left_attacks(queen, self.empty_squares)
+                | slides::get_down_attacks(queen, self.empty_squares)
+                | slides::get_up_right_attacks(queen, self.empty_squares)
+                | slides::get_up_left_attacks(queen, self.empty_squares)
+                | slides::get_down_left_attacks(queen, self.empty_squares)
+                | slides::get_down_right_attacks(queen, self.empty_squares))
                 & !self.active.occupied
                 & self.active.check_mask
                 & self.active.pins.get_pin_mask(queen);
@@ -248,10 +244,10 @@ impl MoveGen {
                 continue;
             }
 
-            let mut moves = (get_right_attacks(rook, self.empty_squares)
-                | get_up_attacks(rook, self.empty_squares)
-                | get_left_attacks(rook, self.empty_squares)
-                | get_down_attacks(rook, self.empty_squares))
+            let mut moves = (slides::get_right_attacks(rook, self.empty_squares)
+                | slides::get_up_attacks(rook, self.empty_squares)
+                | slides::get_left_attacks(rook, self.empty_squares)
+                | slides::get_down_attacks(rook, self.empty_squares))
                 & !self.active.occupied
                 & self.active.check_mask
                 & self.active.pins.get_pin_mask(rook);
