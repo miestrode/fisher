@@ -1,19 +1,5 @@
 use crate::BitBoard;
-
-macro_rules! gen_move_table {
-    ($function:expr) => {{
-        let mut square = 0;
-        let mut moves = [BitBoard::empty(); 64];
-
-        while square < 64 {
-            // Create a bit-board of all knight moves assuming the board is empty.
-            moves[square] = $function(square);
-            square += 1;
-        }
-
-        moves
-    }};
-}
+use array_const_fn_init::array_const_fn_init as initialize;
 
 const fn gen_knight_moves(square: usize) -> BitBoard {
     let piece = BitBoard(1 << square);
@@ -39,7 +25,7 @@ const fn gen_king_moves(square: usize) -> BitBoard {
 }
 
 // This is a look-up table for each move a knight could make in a given square. The index of the move bitboard is the origin square of the knight.
-pub const KNIGHT_MOVES: [BitBoard; 64] = gen_move_table!(gen_knight_moves);
+pub const KNIGHT_MOVES: [BitBoard; 64] = initialize![gen_knight_moves; 64];
 
 // Same deal, but for the king.
-pub const KING_MOVES: [BitBoard; 64] = gen_move_table!(gen_king_moves);
+pub const KING_MOVES: [BitBoard; 64] = initialize![gen_king_moves; 64];

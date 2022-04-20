@@ -1,3 +1,6 @@
+[profile.release]
+lto = true
+
 [package]
 name = "fisher"
 version = "0.1.0"
@@ -7,3 +10,7 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
+array-const-fn-init = "0.1.1"
+serde = { version = "1.0.136", features = ["derive"] }
+serde-big-array = "0.4.1"
+serde_json = "1.0.79"

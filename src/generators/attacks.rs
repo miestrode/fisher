@@ -1,9 +1,9 @@
-use crate::{NOT_A_FILE, NOT_H_FILE};
-
-use super::{
-    move_tables::{KING_MOVES, KNIGHT_MOVES},
-    slides, AttackGen,
+use crate::{
+    tables::{KING_MOVES, KNIGHT_MOVES},
+    NOT_A_FILE, NOT_H_FILE,
 };
+
+use super::{slides, AttackGen};
 
 impl AttackGen<'_> {
     pub fn gen_black_pawn_attacks(&mut self) {

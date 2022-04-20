@@ -4,7 +4,6 @@ use crate::{
 };
 
 pub mod attacks;
-pub mod move_tables;
 pub mod moves;
 pub mod slides;
 
@@ -65,6 +64,8 @@ pub struct AttackGen<'brd> {
 
 impl<'brd> AttackGen<'brd> {
     pub fn run(board: &'brd mut Board) {
+        board.active.attacks = BitBoard::empty();
+
         Self {
             active: board.active,
             inactive: board.inactive,

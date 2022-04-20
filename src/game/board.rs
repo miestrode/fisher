@@ -1,15 +1,20 @@
 use std::mem;
 
+use serde_big_array::BigArray;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    generators::{move_tables::KNIGHT_MOVES, slides, AttackGen, Move, Position},
+    generators::{slides, AttackGen, Move, Position},
     piece_boards::{
         BLACK_BISHOPS, BLACK_KING, BLACK_KNIGHTS, BLACK_PAWNS, BLACK_QUEENS, BLACK_ROOKS,
         WHITE_BISHOPS, WHITE_KING, WHITE_KNIGHTS, WHITE_PAWNS, WHITE_QUEENS, WHITE_ROOKS,
     },
+    tables::KNIGHT_MOVES,
     BitBoard, Piece, PieceKind, Pins, Player,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct PlayerState {
     pub king: BitBoard,
     pub queens: BitBoard,
@@ -103,11 +108,12 @@ impl PlayerState {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Board {
     pub active: PlayerState,
     pub inactive: PlayerState,
     pub player_to_play: Player,
+    #[serde(with = "BigArray")]
     pub board_state: [Option<Piece>; 64],
 }
 

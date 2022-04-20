@@ -1,9 +1,9 @@
-use crate::{PieceKind, NOT_A_FILE, NOT_H_FILE, SECOND_RANK, SEVENTH_RANK};
-
-use super::{
-    move_tables::{KING_MOVES, KNIGHT_MOVES},
-    slides, Move, MoveGen,
+use crate::{
+    tables::{KING_MOVES, KNIGHT_MOVES},
+    PieceKind, NOT_A_FILE, NOT_H_FILE, SECOND_RANK, SEVENTH_RANK,
 };
+
+use super::{slides, Move, MoveGen};
 
 impl MoveGen {
     pub fn gen_black_pawn_attacks(&mut self) {
@@ -154,8 +154,8 @@ impl MoveGen {
                 | slides::get_up_left_attacks(bishop, self.empty_squares)
                 | slides::get_down_left_attacks(bishop, self.empty_squares)
                 | slides::get_down_right_attacks(bishop, self.empty_squares))
-                & !self.active.occupied
                 & self.active.check_mask
+                & !self.active.occupied
                 & self.active.pins.get_pin_mask(bishop);
 
             while moves.is_not_empty() {

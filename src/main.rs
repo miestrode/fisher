@@ -1,41 +1,40 @@
-use std::time::Instant;
+use std::{fs::File, io, time::Instant};
 
 use fisher::{game::board::Board, generators::MoveGen};
 
-fn search(depth: u32) -> u32 {
-    search_inner(Board::new(), depth)
-}
+use rand::prelude::*;
+use serde::Serialize;
 
-fn search_inner(board: Board, depth: u32) -> u32 {
-    if depth == 0 {
-        1
-    } else {
+fn play() {
+    let mut board = Board::new();
+
+    loop {
+        let now = Instant::now();
+
         let moves = MoveGen::run(board);
 
-        if moves.len() == 0 {
-            println!("{}", board);
-            1
-        } else {
-            moves
-                .into_iter()
-                .map(|chess_move| {
-                    let mut board_copy = board;
+        println!(
+            "{}Moves generated: {} | Took: {:.3}ns",
+            board,
+            moves.len(),
+            now.elapsed().as_nanos()
+        );
 
-                    board_copy.make_move(chess_move);
+        io::stdin()
+            .read_line(&mut String::new())
+            .expect("Failed to wait for input.");
 
-                    search_inner(board_copy, depth - 1)
-                })
-                .sum()
-        }
+        board.make_move(*moves.choose(&mut thread_rng()).unwrap());
+
+        board
+            .serialize(&mut serde_json::Serializer::new(
+                File::create("../BOARD.json")
+                    .expect("Could not create serialization file for board."),
+            ))
+            .expect("Could not serialize board.");
     }
 }
 
 fn main() {
-    let elapsed = Instant::now();
-
-    println!(
-        "Moves found: {}, Time spent: {:.4}s",
-        search(6),
-        elapsed.elapsed().as_secs_f64()
-    );
+    play();
 }

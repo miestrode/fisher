@@ -1,11 +1,14 @@
-#![feature(const_trait_impl, const_for)]
+#![feature(const_trait_impl, const_for, const_mut_refs)]
 
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub};
 
-use generators::Position;
+use game::board::Board;
+use generators::{MoveGen, Position};
+use serde::{Deserialize, Serialize};
 pub mod engine;
 pub mod game;
 pub mod generators;
+pub mod tables;
 
 pub const DE_BRUIJN_INDICES: [u32; 64] = [
     0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61, 54, 58, 35, 52, 50, 42, 21, 44, 38,
@@ -23,14 +26,14 @@ pub const SECOND_RANK: BitBoard =
 pub const SEVENTH_RANK: BitBoard =
     BitBoard(0b0000000011111111000000000000000000000000000000000000000000000000);
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct BitBoard(pub u64);
 
-impl BitBoard {
-    pub fn new_from_bit_string(string: &str) -> Self {
+impl From<&str> for BitBoard {
+    fn from(bitstring: &str) -> Self {
         Self(
             u64::from_str_radix(
-                string
+                bitstring
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join("")
@@ -41,7 +44,9 @@ impl BitBoard {
         )
         .h_flip()
     }
+}
 
+impl BitBoard {
     pub const fn empty() -> Self {
         Self(0)
     }
@@ -297,7 +302,7 @@ pub mod piece_boards {
     pub const BLACK_PAWNS: BitBoard = BitBoard(WHITE_PAWNS.0.reverse_bits());
 }
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Pins {
     pub horizontal: BitBoard,
     pub vertical: BitBoard,
@@ -359,7 +364,7 @@ impl Pins {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum PieceKind {
     King,
     Queen,
@@ -369,14 +374,37 @@ pub enum PieceKind {
     Pawn,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum Player {
     White,
     Black,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Piece {
     pub piece_kind: PieceKind,
     pub player: Player,
+}
+
+fn search(depth: u32) -> u32 {
+    search_inner(Board::new(), depth)
+}
+
+fn search_inner(board: Board, depth: u32) -> u32 {
+    if depth == 0 {
+        1
+    } else {
+        let moves = MoveGen::run(board);
+
+        moves
+            .into_iter()
+            .map(|chess_move| {
+                let mut board_copy = board;
+
+                board_copy.make_move(chess_move);
+
+                search_inner(board_copy, depth - 1)
+            })
+            .sum()
+    }
 }
