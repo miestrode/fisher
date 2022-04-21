@@ -1,9 +1,5 @@
 use std::mem;
 
-use serde_big_array::BigArray;
-
-use serde::{Deserialize, Serialize};
-
 use crate::{
     generators::{slides, AttackGen, Move, Position},
     piece_boards::{
@@ -14,7 +10,7 @@ use crate::{
     BitBoard, Piece, PieceKind, Pins, Player,
 };
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct PlayerState {
     pub king: BitBoard,
     pub queens: BitBoard,
@@ -108,12 +104,11 @@ impl PlayerState {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Board {
     pub active: PlayerState,
     pub inactive: PlayerState,
     pub player_to_play: Player,
-    #[serde(with = "BigArray")]
     pub board_state: [Option<Piece>; 64],
 }
 

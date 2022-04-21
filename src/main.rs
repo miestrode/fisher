@@ -1,9 +1,8 @@
-use std::{fs::File, io, time::Instant};
+use std::{io, time::Instant};
 
 use fisher::{game::board::Board, generators::MoveGen};
 
 use rand::prelude::*;
-use serde::Serialize;
 
 fn play() {
     let mut board = Board::new();
@@ -25,13 +24,6 @@ fn play() {
             .expect("Failed to wait for input.");
 
         board.make_move(*moves.choose(&mut thread_rng()).unwrap());
-
-        board
-            .serialize(&mut serde_json::Serializer::new(
-                File::create("../BOARD.json")
-                    .expect("Could not create serialization file for board."),
-            ))
-            .expect("Could not serialize board.");
     }
 }
 

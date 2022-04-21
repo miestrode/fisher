@@ -3,8 +3,9 @@
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub};
 
 use game::board::Board;
+
 use generators::{MoveGen, Position};
-use serde::{Deserialize, Serialize};
+
 pub mod engine;
 pub mod game;
 pub mod generators;
@@ -26,7 +27,7 @@ pub const SECOND_RANK: BitBoard =
 pub const SEVENTH_RANK: BitBoard =
     BitBoard(0b0000000011111111000000000000000000000000000000000000000000000000);
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct BitBoard(pub u64);
 
 impl From<&str> for BitBoard {
@@ -302,7 +303,7 @@ pub mod piece_boards {
     pub const BLACK_PAWNS: BitBoard = BitBoard(WHITE_PAWNS.0.reverse_bits());
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Pins {
     pub horizontal: BitBoard,
     pub vertical: BitBoard,
@@ -364,7 +365,7 @@ impl Pins {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PieceKind {
     King,
     Queen,
@@ -374,13 +375,13 @@ pub enum PieceKind {
     Pawn,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum Player {
     White,
     Black,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Piece {
     pub piece_kind: PieceKind,
     pub player: Player,
