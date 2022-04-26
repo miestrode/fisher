@@ -1,5 +1,3 @@
-use std::{io, time::Instant};
-
 use fisher::{game::board::Board, generators::MoveGen};
 
 use rand::prelude::*;
@@ -7,26 +5,25 @@ use rand::prelude::*;
 fn play() {
     let mut board = Board::new();
 
-    loop {
-        let now = Instant::now();
-
+    for _ in 0..100 {
         let moves = MoveGen::run(board);
 
-        println!(
-            "{}Moves generated: {} | Took: {:.3}ns",
-            board,
-            moves.len(),
-            now.elapsed().as_nanos()
-        );
+        if moves.len() == 0 {
+            return;
+        }
 
-        io::stdin()
-            .read_line(&mut String::new())
-            .expect("Failed to wait for input.");
+        print!("{}", board);
 
-        board.make_move(*moves.choose(&mut thread_rng()).unwrap());
+        let played_move = *moves.choose(&mut thread_rng()).unwrap();
+
+        println!("Playing {} as {}.\n", played_move, board.player_to_play);
+
+        board.make_move(played_move);
     }
 }
 
 fn main() {
-    play();
+    loop {
+        play();
+    }
 }

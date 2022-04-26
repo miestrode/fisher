@@ -1,22 +1,28 @@
 #![feature(const_trait_impl, const_for, const_mut_refs)]
 
+use game::board::Board;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub};
 
-use game::board::Board;
-
-use generators::{MoveGen, Position};
+use generators::{MoveGen, Square};
 
 pub mod engine;
 pub mod game;
 pub mod generators;
 pub mod tables;
+pub mod uci;
+
+pub const PROMOTION_PIECES: [PieceKind; 4] = [
+    PieceKind::Queen,
+    PieceKind::Rook,
+    PieceKind::Bishop,
+    PieceKind::Knight,
+];
 
 pub const DE_BRUIJN_INDICES: [u32; 64] = [
     0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61, 54, 58, 35, 52, 50, 42, 21, 44, 38,
     32, 29, 23, 17, 11, 4, 62, 46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43, 31, 22, 10, 45, 25,
     39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63,
 ];
-
 pub const NOT_H_FILE: BitBoard =
     BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
 pub const NOT_A_FILE: BitBoard =
@@ -26,8 +32,17 @@ pub const SECOND_RANK: BitBoard =
     BitBoard(0b0000000000000000000000000000000000000000000000001111111100000000);
 pub const SEVENTH_RANK: BitBoard =
     BitBoard(0b0000000011111111000000000000000000000000000000000000000000000000);
+pub const FIRST_RANK: BitBoard =
+    BitBoard(0b0000000000000000000000000000000000000000000000000000000011111111);
+pub const EIGHTH_RANK: BitBoard =
+    BitBoard(0b1111111100000000000000000000000000000000000000000000000000000000);
 
-#[derive(Clone, Copy)]
+pub const CASTLE_KS_SPACE: BitBoard =
+    BitBoard(0b0000000000000000000000000000000000000000000000000000000001100000);
+pub const CASTLE_QS_SPACE: BitBoard =
+    BitBoard(0b0000000000000000000000000000000000000000000000000000000000001110);
+
+#[derive(Clone, Copy, PartialEq)]
 pub struct BitBoard(pub u64);
 
 impl From<&str> for BitBoard {
@@ -60,11 +75,11 @@ impl BitBoard {
         self.0.count_ones()
     }
 
-    pub fn get_bit(&self, position: Position) -> bool {
+    pub fn get_bit(&self, position: Square) -> bool {
         ((self.0 >> position.0) & 1) == 1
     }
 
-    pub fn toggle_bit(&mut self, position: Position) {
+    pub fn toggle_bit(&mut self, position: Square) {
         self.0 = self.0 ^ (1 << position.0);
     }
 
@@ -86,7 +101,11 @@ impl BitBoard {
         self & self.move_down(1)
     }
 
-    pub fn make_move(&mut self, to: Position, from: Position) {
+    pub fn first_one_position(&self) -> Square {
+        Square(self.0.trailing_zeros())
+    }
+
+    pub fn make_move(&mut self, to: Square, from: Square) {
         self.toggle_bit(from); // Assumed to be on.
         self.toggle_bit(to); // Assumed to be off.
     }
@@ -127,15 +146,10 @@ impl BitBoard {
     }
 
     // See: https://www.chessprogramming.org/BitScan#De_Bruijn_Multiplication
-    pub fn pop_first_one(&mut self) -> Position {
+    pub fn pop_first_one(&mut self) -> Square {
         assert_ne!(self.0, 0);
 
-        let de_bruijn_number = 0x03f79d71b4cb0a89;
-
-        let position = Position(
-            DE_BRUIJN_INDICES
-                [(((self.0 ^ (self.0 - 1)).wrapping_mul(de_bruijn_number)) >> 58) as usize],
-        );
+        let position = Square(self.0.trailing_zeros());
 
         // This is done to set the first one to a 0, since we are popping it.
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
@@ -157,7 +171,7 @@ impl BitBoard {
         BitBoard(isolated_one)
     }
 
-    pub fn pfo_with_bitboard(&mut self) -> (Position, Self) {
+    pub fn pfo_with_bitboard(&mut self) -> (Square, Self) {
         assert_ne!(self.0, 0);
 
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Isolation
@@ -168,7 +182,7 @@ impl BitBoard {
         self.0 &= self.0 - 1;
 
         (
-            Position(isolated_one.trailing_zeros()),
+            Square(isolated_one.trailing_zeros()),
             BitBoard(isolated_one),
         )
     }
@@ -365,7 +379,7 @@ impl Pins {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PieceKind {
     King,
     Queen,
@@ -387,23 +401,41 @@ pub struct Piece {
     pub player: Player,
 }
 
-fn search(depth: u32) -> u32 {
-    search_inner(Board::new(), depth)
+pub fn divide(board: Board, depth: u32) -> u32 {
+    assert_ne!(depth, 1);
+
+    let moves = MoveGen::run(board);
+
+    moves
+        .into_iter()
+        .map(|chess_move| {
+            let mut board_copy = board;
+
+            board_copy.make_move(chess_move);
+            let found = search_inner(board_copy, depth - 1);
+
+            println!("{}: {}", chess_move, found);
+
+            found
+        })
+        .sum()
 }
 
 fn search_inner(board: Board, depth: u32) -> u32 {
-    if depth == 0 {
-        1
-    } else {
-        let moves = MoveGen::run(board);
+    let moves = MoveGen::run(board);
 
+    if depth == 1 {
+        // At a depth of one we know all next moves will reach depth zero. Thus, we can know they are all leaves and add one each to the nodes searched.
+        moves.len() as u32
+    } else if moves.len() == 0 {
+        0
+    } else {
         moves
             .into_iter()
             .map(|chess_move| {
                 let mut board_copy = board;
 
                 board_copy.make_move(chess_move);
-
                 search_inner(board_copy, depth - 1)
             })
             .sum()

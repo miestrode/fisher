@@ -14,4 +14,4 @@ Cargo.lock
 *.pdb
 
 # Ignore the development shell.
-flake.nix
+devshell/
