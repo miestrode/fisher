@@ -1,9 +1,14 @@
 #![feature(const_trait_impl, const_for, const_mut_refs)]
 
-use game::board::Board;
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub};
+use std::{
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub},
+    str::FromStr,
+};
 
-use generators::{MoveGen, Square};
+use game::board::Board;
+use generators::Square;
+
+use crate::generators::MoveGen;
 
 pub mod engine;
 pub mod game;
@@ -18,11 +23,9 @@ pub const PROMOTION_PIECES: [PieceKind; 4] = [
     PieceKind::Knight,
 ];
 
-pub const DE_BRUIJN_INDICES: [u32; 64] = [
-    0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61, 54, 58, 35, 52, 50, 42, 21, 44, 38,
-    32, 29, 23, 17, 11, 4, 62, 46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43, 31, 22, 10, 45, 25,
-    39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63,
-];
+pub const LEFT_ROOK_ORIGINS: [Square; 2] = [Square::A1, Square::A8];
+pub const RIGHT_ROOK_ORIGINS: [Square; 2] = [Square::H1, Square::H8];
+
 pub const NOT_H_FILE: BitBoard =
     BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
 pub const NOT_A_FILE: BitBoard =
@@ -45,20 +48,9 @@ pub const CASTLE_QS_SPACE: BitBoard =
 #[derive(Clone, Copy, PartialEq)]
 pub struct BitBoard(pub u64);
 
-impl From<&str> for BitBoard {
-    fn from(bitstring: &str) -> Self {
-        Self(
-            u64::from_str_radix(
-                bitstring
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join("")
-                    .as_str(),
-                2,
-            )
-            .unwrap(),
-        )
-        .h_flip()
+impl From<Square> for BitBoard {
+    fn from(square: Square) -> Self {
+        BitBoard(1 << square.0)
     }
 }
 
@@ -75,12 +67,12 @@ impl BitBoard {
         self.0.count_ones()
     }
 
-    pub fn get_bit(&self, position: Square) -> bool {
-        ((self.0 >> position.0) & 1) == 1
+    pub fn get_bit(&self, square: Square) -> bool {
+        ((self.0 >> square.0) & 1) == 1
     }
 
-    pub fn toggle_bit(&mut self, position: Square) {
-        self.0 = self.0 ^ (1 << position.0);
+    pub fn toggle_bit(&mut self, square: Square) {
+        self.0 ^= 1 << square.0;
     }
 
     /*
@@ -101,17 +93,27 @@ impl BitBoard {
         self & self.move_down(1)
     }
 
-    pub fn first_one_position(&self) -> Square {
+    pub fn first_one_square(&self) -> Square {
+        assert!(self.isnt_empty());
+
         Square(self.0.trailing_zeros())
     }
 
-    pub fn make_move(&mut self, to: Square, from: Square) {
-        self.toggle_bit(from); // Assumed to be on.
-        self.toggle_bit(to); // Assumed to be off.
+    pub fn move_bit(&mut self, origin: Square, target: Square) {
+        self.toggle_bit(target); // Assumed to be on.
+        self.toggle_bit(origin); // Assumed to be off.
     }
 
-    pub fn is_not_empty(&self) -> bool {
-        self.0 != 0
+    pub fn turn_off(&mut self, square: Square) {
+        self.0 &= !(1 << square.0)
+    }
+
+    pub fn turn_on(&mut self, square: Square) {
+        self.0 |= 1 << square.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
     }
 
     pub fn is_single_1(&self) -> bool {
@@ -122,40 +124,20 @@ impl BitBoard {
         self.0 == u64::MAX
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0 == 0
+    pub fn isnt_empty(&self) -> bool {
+        self.0 != 0
     }
 
-    pub fn v_flip(self) -> Self {
-        Self(self.0.swap_bytes())
-    }
-
-    // See: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating#Horizontal
-    pub fn h_flip(self) -> Self {
-        let mut bits = self.0;
-
-        let k_1 = 0x5555555555555555;
-        let k_2 = 0x3333333333333333;
-        let k_4 = 0x0f0f0f0f0f0f0f0f;
-
-        bits = ((bits >> 1) & k_1) + 2 * (bits & k_1);
-        bits = ((bits >> 2) & k_2) + 4 * (bits & k_2);
-        bits = ((bits >> 4) & k_4) + 16 * (bits & k_4);
-
-        Self(bits)
-    }
-
-    // See: https://www.chessprogramming.org/BitScan#De_Bruijn_Multiplication
     pub fn pop_first_one(&mut self) -> Square {
         assert_ne!(self.0, 0);
 
-        let position = Square(self.0.trailing_zeros());
+        let square = self.first_one_square();
 
         // This is done to set the first one to a 0, since we are popping it.
         // See: https://www.chessprogramming.org/General_Setwise_Operations#Reset
         self.0 &= self.0 - 1;
 
-        position
+        square
     }
 
     pub fn pfo_as_bitboard(&mut self) -> Self {
@@ -290,33 +272,6 @@ impl const Sub<BitBoard> for BitBoard {
     }
 }
 
-pub mod piece_boards {
-    use super::BitBoard;
-
-    pub const WHITE_KING: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000000000000000010000);
-    pub const WHITE_QUEENS: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000000000000000001000);
-    pub const WHITE_ROOKS: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000000000000010000001);
-    pub const WHITE_BISHOPS: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000000000000000100100);
-    pub const WHITE_KNIGHTS: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000000000000001000010);
-    pub const WHITE_PAWNS: BitBoard =
-        BitBoard(0b0000000000000000000000000000000000000000000000001111111100000000);
-
-    // The black king and queen's position bit-board isn't "symmetric" to the white ones.
-    pub const BLACK_KING: BitBoard =
-        BitBoard(0b0001000000000000000000000000000000000000000000000000000000000000);
-    pub const BLACK_QUEENS: BitBoard =
-        BitBoard(0b0000100000000000000000000000000000000000000000000000000000000000);
-    pub const BLACK_ROOKS: BitBoard = BitBoard(WHITE_ROOKS.0.reverse_bits());
-    pub const BLACK_BISHOPS: BitBoard = BitBoard(WHITE_BISHOPS.0.reverse_bits());
-    pub const BLACK_KNIGHTS: BitBoard = BitBoard(WHITE_KNIGHTS.0.reverse_bits());
-    pub const BLACK_PAWNS: BitBoard = BitBoard(WHITE_PAWNS.0.reverse_bits());
-}
-
 #[derive(Clone, Copy)]
 pub struct Pins {
     pub horizontal: BitBoard,
@@ -337,13 +292,13 @@ impl Pins {
 
     // This will return the set of all squares this piece can occupy based on the active pins.
     pub fn get_pin_mask(&self, piece: BitBoard) -> BitBoard {
-        if (piece & self.horizontal).is_not_empty() {
+        if (piece & self.horizontal).isnt_empty() {
             self.horizontal
-        } else if (piece & self.vertical).is_not_empty() {
+        } else if (piece & self.vertical).isnt_empty() {
             self.vertical
-        } else if (piece & self.diagonal).is_not_empty() {
+        } else if (piece & self.diagonal).isnt_empty() {
             self.diagonal
-        } else if (piece & self.anti_diagonal).is_not_empty() {
+        } else if (piece & self.anti_diagonal).isnt_empty() {
             self.anti_diagonal
         } else {
             !BitBoard::empty()
@@ -389,10 +344,56 @@ pub enum PieceKind {
     Pawn,
 }
 
-#[derive(Clone, Copy)]
+impl FromStr for PieceKind {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 1 {
+            Err("Input must contain a single character")
+        } else {
+            let mut chars = s.chars();
+
+            match chars.next().unwrap() {
+                'k' => Ok(PieceKind::King),
+                'q' => Ok(PieceKind::Queen),
+                'r' => Ok(PieceKind::Rook),
+                'b' => Ok(PieceKind::Bishop),
+                'n' => Ok(PieceKind::Knight),
+                'p' => Ok(PieceKind::Pawn),
+                _ => Err("Input must contain a valid piece character (k, q, r, b, n or p)"),
+            }
+        }
+    }
+}
+
+impl PieceKind {
+    fn into_piece_char(&self) -> char {
+        match self {
+            PieceKind::King => 'k',
+            PieceKind::Queen => 'q',
+            PieceKind::Rook => 'r',
+            PieceKind::Bishop => 'b',
+            PieceKind::Knight => 'n',
+            PieceKind::Pawn => 'p',
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
 pub enum Player {
     White,
     Black,
+}
+
+impl Not for Player {
+    type Output = Player;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Player::White => Player::Black,
+            Player::Black => Player::White,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -401,9 +402,59 @@ pub struct Piece {
     pub player: Player,
 }
 
-pub fn divide(board: Board, depth: u32) -> u32 {
-    assert_ne!(depth, 1);
+impl Piece {
+    pub const WHITE_PAWN: Self = Self {
+        piece_kind: PieceKind::Pawn,
+        player: Player::White,
+    };
+    pub const WHITE_KNIGHT: Self = Self {
+        piece_kind: PieceKind::Knight,
+        player: Player::White,
+    };
+    pub const WHITE_BISHOP: Self = Self {
+        piece_kind: PieceKind::Bishop,
+        player: Player::White,
+    };
+    pub const WHITE_ROOK: Self = Self {
+        piece_kind: PieceKind::Rook,
+        player: Player::White,
+    };
+    pub const WHITE_QUEEN: Self = Self {
+        piece_kind: PieceKind::Queen,
+        player: Player::White,
+    };
+    pub const WHITE_KING: Self = Self {
+        piece_kind: PieceKind::King,
+        player: Player::White,
+    };
 
+    pub const BLACK_PAWN: Self = Self {
+        piece_kind: PieceKind::Pawn,
+        player: Player::Black,
+    };
+    pub const BLACK_KNIGHT: Self = Self {
+        piece_kind: PieceKind::Knight,
+        player: Player::Black,
+    };
+    pub const BLACK_BISHOP: Self = Self {
+        piece_kind: PieceKind::Bishop,
+        player: Player::Black,
+    };
+    pub const BLACK_ROOK: Self = Self {
+        piece_kind: PieceKind::Rook,
+        player: Player::Black,
+    };
+    pub const BLACK_QUEEN: Self = Self {
+        piece_kind: PieceKind::Queen,
+        player: Player::Black,
+    };
+    pub const BLACK_KING: Self = Self {
+        piece_kind: PieceKind::King,
+        player: Player::Black,
+    };
+}
+
+pub fn divide(board: Board, depth: u32) -> u32 {
     let moves = MoveGen::run(board);
 
     moves
@@ -424,7 +475,9 @@ pub fn divide(board: Board, depth: u32) -> u32 {
 fn search_inner(board: Board, depth: u32) -> u32 {
     let moves = MoveGen::run(board);
 
-    if depth == 1 {
+    if depth == 0 {
+        1
+    } else if depth == 1 {
         // At a depth of one we know all next moves will reach depth zero. Thus, we can know they are all leaves and add one each to the nodes searched.
         moves.len() as u32
     } else if moves.len() == 0 {
@@ -436,6 +489,7 @@ fn search_inner(board: Board, depth: u32) -> u32 {
                 let mut board_copy = board;
 
                 board_copy.make_move(chess_move);
+
                 search_inner(board_copy, depth - 1)
             })
             .sum()

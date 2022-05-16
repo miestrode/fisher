@@ -6,33 +6,29 @@ use crate::{
     BitBoard, Piece, PieceKind, Player,
 };
 
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let occupied = self.active.occupied | self.inactive.occupied;
-        let current_attacks = self.inactive.attacks;
-        let illegal_squares = !self.active.check_mask;
-        let pinned_squares = self.active.pins.get_all_pins();
-
         // The order of reading of the board should be from top left to bottom right so we can't just go over all the squares linearly.
         // I.E: "0, 1, 2, ... 62, 63" won't work.
         for row in 0..8 {
             for column in 0..8 {
-                let position = Square((56 - row * 8) + column);
+                let square = Square((56 - row * 8) + column);
+                let piece = self.pieces.get_piece(square);
 
-                let style = Style::new(if occupied.get_bit(position) {
-                    Color::Black
-                } else {
-                    Color::Red
-                })
-                .bg(if pinned_squares.get_bit(position) {
-                    Color::Magenta
-                } else if illegal_squares.get_bit(position) {
-                    Color::Yellow
-                } else if current_attacks.get_bit(position) {
-                    Color::Red
-                } else if (position.0 + row % 2) % 2 == 0 {
+                let style = Style::new(
+                    if let Some(Piece {
+                        player: Player::White,
+                        ..
+                    }) = piece
+                    {
+                        Color::White
+                    } else {
+                        Color::Black
+                    },
+                )
+                .bg(if (square.0 + row % 2) % 2 == 0 {
                     Color::Blue
                 } else {
                     Color::Cyan
@@ -40,8 +36,68 @@ impl Display for Board {
 
                 f.write_str(
                     style
-                        .paint(if let Some(piece) = self.get_piece(position) {
-                            format!("{} ", piece)
+                        .paint(if let Some(piece) = piece {
+                            format!("{} ", piece.piece_kind)
+                        } else {
+                            String::from("  ")
+                        })
+                        .to_string()
+                        .as_str(),
+                )?;
+            }
+            writeln!(f)?;
+        }
+
+        Ok(())
+    }
+}
+
+// TODO: Refactor this.
+impl Debug for Board {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let occupied = self.active.pieces | self.inactive.pieces;
+        let current_attacks = self.inactive.attacks;
+        let illegal_squares = !self.active.check_mask;
+        let pinned_squares = self.active.pins.get_all_pins();
+        let ep_square = self.ep_capture_point;
+
+        // The order of reading of the board should be from top left to bottom right so we can't just go over all the squares linearly.
+        // I.E: "0, 1, 2, ... 62, 63" won't work.
+        for row in 0..8 {
+            for column in 0..8 {
+                let square = Square((56 - row * 8) + column);
+                let piece = self.pieces.get_piece(square);
+
+                let style = Style::new(if let Some(piece) = piece {
+                    if !occupied.get_bit(square) {
+                        Color::Red
+                    } else {
+                        match piece.player {
+                            Player::Black => Color::Black,
+                            Player::White => Color::White,
+                        }
+                    }
+                } else {
+                    Color::Red
+                })
+                .bg(if pinned_squares.get_bit(square) {
+                    Color::Magenta
+                } else if illegal_squares.get_bit(square) {
+                    Color::Yellow
+                } else if ep_square.get_bit(square) {
+                    Color::Green
+                } else if current_attacks.get_bit(square) {
+                    Color::Red
+                } else if (square.0 + row % 2) % 2 == 0 {
+                    Color::Blue
+                } else {
+                    Color::Cyan
+                });
+
+                f.write_str(
+                    style
+                        .paint(if let Some(piece) = self.pieces.get_piece(square) {
+                            format!("{} ", piece.piece_kind)
                         } else {
                             String::from("  ")
                         })
@@ -77,35 +133,12 @@ impl Display for BitBoard {
 impl Display for PieceKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_char(match self {
-            PieceKind::King => '♔',
-            PieceKind::Queen => '♕',
-            PieceKind::Rook => '♖',
-            PieceKind::Bishop => '♗',
-            PieceKind::Knight => '♘',
-            PieceKind::Pawn => '♙',
-        })
-    }
-}
-
-impl Display for Piece {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_char(match self.player {
-            Player::White => match self.piece_kind {
-                PieceKind::King => '♔',
-                PieceKind::Queen => '♕',
-                PieceKind::Rook => '♖',
-                PieceKind::Bishop => '♗',
-                PieceKind::Knight => '♘',
-                PieceKind::Pawn => '♙',
-            },
-            Player::Black => match self.piece_kind {
-                PieceKind::King => '♚',
-                PieceKind::Queen => '♛',
-                PieceKind::Rook => '♜',
-                PieceKind::Bishop => '♝',
-                PieceKind::Knight => '♞',
-                PieceKind::Pawn => '♟',
-            },
+            PieceKind::King => '♚',
+            PieceKind::Queen => '♛',
+            PieceKind::Rook => '♜',
+            PieceKind::Bishop => '♝',
+            PieceKind::Knight => '♞',
+            PieceKind::Pawn => '♟',
         })
     }
 }
@@ -147,21 +180,6 @@ impl Display for Player {
 impl Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Move::Regular {
-                origin,
-                target,
-                is_en_passant,
-                ..
-            } => {
-                Display::fmt(origin, f)?;
-                Display::fmt(target, f)?;
-
-                if *is_en_passant {
-                    f.write_char('^')
-                } else {
-                    Ok(())
-                }
-            }
             Move::Promotion {
                 origin,
                 target,
@@ -169,10 +187,22 @@ impl Display for Move {
             } => {
                 Display::fmt(origin, f)?;
                 Display::fmt(target, f)?;
-                Display::fmt(promotion_to, f)
+                f.write_char('=')?;
+                f.write_char(promotion_to.into_piece_char())
             }
-            Move::CastleKS => f.write_str("O-O"),
-            Move::CastleQS => f.write_str("O-O-O"),
+            Move::CastleKS => f.write_str("ks"),
+            Move::CastleQS => f.write_str("qs"),
+            Move::Regular {
+                origin,
+                target,
+                piece_kind,
+                ..
+            } => {
+                f.write_char(piece_kind.into_piece_char())?;
+                Display::fmt(origin, f)?;
+                Display::fmt(target, f)
+            }
+            Move::EnPassant { origin } => Display::fmt(origin, f),
         }
     }
 }

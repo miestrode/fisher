@@ -1,29 +1,17 @@
-use fisher::{game::board::Board, generators::MoveGen};
+use std::str::FromStr;
 
-use rand::prelude::*;
-
-fn play() {
-    let mut board = Board::new();
-
-    for _ in 0..100 {
-        let moves = MoveGen::run(board);
-
-        if moves.len() == 0 {
-            return;
-        }
-
-        print!("{}", board);
-
-        let played_move = *moves.choose(&mut thread_rng()).unwrap();
-
-        println!("Playing {} as {}.\n", played_move, board.player_to_play);
-
-        board.make_move(played_move);
-    }
-}
+use fisher::{divide, game::board::Board, generators::Move};
 
 fn main() {
-    loop {
-        play();
-    }
+    let mut board = Board::default();
+
+    board.make_move(Move::from_str("pb2b3").unwrap());
+    board.make_move(Move::from_str("pe7e6").unwrap());
+    board.make_move(Move::from_str("bc1a3").unwrap());
+    board.make_move(Move::from_str("bf8b4").unwrap());
+    board.make_move(Move::from_str("ba3b4").unwrap());
+
+    println!("{:?}", board);
+
+    println!("Found {} total leaves", divide(board, 1));
 }

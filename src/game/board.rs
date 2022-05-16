@@ -1,14 +1,15 @@
-use std::mem;
-
 use crate::{
-    generators::{slides, AttackGen, Move, Square},
-    piece_boards::{
-        BLACK_BISHOPS, BLACK_KING, BLACK_KNIGHTS, BLACK_PAWNS, BLACK_QUEENS, BLACK_ROOKS,
-        WHITE_BISHOPS, WHITE_KING, WHITE_KNIGHTS, WHITE_PAWNS, WHITE_QUEENS, WHITE_ROOKS,
+    generators::{
+        slides::{
+            get_down_attacks, get_down_left_attacks, get_down_right_attacks, get_left_attacks,
+            get_right_attacks, get_up_attacks, get_up_left_attacks, get_up_right_attacks,
+        },
+        AttackGen, Move, Square,
     },
     tables::KNIGHT_MOVES,
-    BitBoard, Piece, PieceKind, Pins, Player,
+    BitBoard, Piece, PieceKind, Pins, Player, LEFT_ROOK_ORIGINS, RIGHT_ROOK_ORIGINS,
 };
+use std::{mem, str::FromStr};
 
 #[derive(Clone, Copy)]
 pub struct PlayerState {
@@ -18,71 +19,55 @@ pub struct PlayerState {
     pub bishops: BitBoard,
     pub knights: BitBoard,
     pub pawns: BitBoard,
-    pub occupied: BitBoard,
-    pub attacks: BitBoard,
-    pub king_must_move: bool,
-    pub pins: Pins,
+    pub pieces: BitBoard,
     pub check_mask: BitBoard,
+    pub attacks: BitBoard,
+    pub pins: Pins,
     pub can_castle_ks: bool,
     pub can_castle_qs: bool,
+    pub king_must_move: bool,
 }
 
 impl PlayerState {
-    pub fn new(player: Player) -> Self {
-        match player {
-            Player::White => Self {
-                king: WHITE_KING,
-                queens: WHITE_QUEENS,
-                rooks: WHITE_ROOKS,
-                bishops: WHITE_BISHOPS,
-                knights: WHITE_KNIGHTS,
-                pawns: WHITE_PAWNS,
-                occupied: WHITE_KING
-                    | WHITE_QUEENS
-                    | WHITE_ROOKS
-                    | WHITE_BISHOPS
-                    | WHITE_KNIGHTS
-                    | WHITE_PAWNS,
-                attacks: BitBoard::empty(), // White plays first, and so this will be updated.
-                check_mask: BitBoard::full(),
-                pins: Pins::new(),
-                king_must_move: false,
-                can_castle_ks: true,
-                can_castle_qs: true,
-            },
-            Player::Black => Self {
-                king: BLACK_KING,
-                queens: BLACK_QUEENS,
-                rooks: BLACK_ROOKS,
-                bishops: BLACK_BISHOPS,
-                knights: BLACK_KNIGHTS,
-                pawns: BLACK_PAWNS,
-                occupied: BLACK_KING
-                    | BLACK_QUEENS
-                    | BLACK_ROOKS
-                    | BLACK_BISHOPS
-                    | BLACK_KNIGHTS
-                    | BLACK_PAWNS,
-                attacks: BitBoard::empty(), // At the first turn, black's attack data is useless, as any first move cannot cause check.
-                pins: Pins::new(),
-                king_must_move: false,
-                check_mask: BitBoard::full(),
-                can_castle_ks: true,
-                can_castle_qs: true,
-            },
+    pub fn blank() -> Self {
+        Self {
+            king: BitBoard::empty(),
+            queens: BitBoard::empty(),
+            rooks: BitBoard::empty(),
+            bishops: BitBoard::empty(),
+            knights: BitBoard::empty(),
+            pawns: BitBoard::empty(),
+            pieces: BitBoard::empty(),
+            check_mask: BitBoard::full(),
+            pins: Pins::new(),
+            can_castle_ks: false,
+            can_castle_qs: false,
+            king_must_move: false,
+            attacks: BitBoard::empty(),
         }
     }
 
-    pub fn update_check(&mut self, check_mask: BitBoard) {
-        // We are in a state of double-check if the second branch is taken.
-        if self.check_mask.is_full() {
-            self.check_mask = check_mask;
-        } else {
-            self.king_must_move = true;
-        }
+    pub fn place_piece(&mut self, piece_kind: PieceKind, square: Square) {
+        self.get_mut_piece_bitboard(piece_kind).turn_on(square);
+        self.pieces.turn_on(square);
     }
 
-    pub fn get_bitboard(&mut self, piece_kind: PieceKind) -> &mut BitBoard {
+    pub fn remove_piece(&mut self, piece_kind: PieceKind, square: Square) {
+        self.get_mut_piece_bitboard(piece_kind).turn_off(square);
+        self.pieces.turn_off(square);
+    }
+
+    pub fn move_piece(&mut self, piece_kind: PieceKind, origin: Square, target: Square) {
+        self.get_mut_piece_bitboard(piece_kind)
+            .move_bit(origin, target);
+        self.pieces.move_bit(origin, target);
+    }
+
+    pub fn isnt_in_check(&self) -> bool {
+        self.check_mask.is_full()
+    }
+
+    fn get_mut_piece_bitboard(&mut self, piece_kind: PieceKind) -> &mut BitBoard {
         match piece_kind {
             PieceKind::King => &mut self.king,
             PieceKind::Queen => &mut self.queens,
@@ -92,62 +77,33 @@ impl PlayerState {
             PieceKind::Pawn => &mut self.pawns,
         }
     }
+}
 
-    pub fn move_piece(&mut self, piece_kind: PieceKind, origin: Square, target: Square) {
-        self.get_bitboard(piece_kind).make_move(target, origin);
+#[derive(Clone, Copy)]
+pub struct BoardPieces {
+    pub pieces: [Option<Piece>; 64],
+}
 
-        // All the bitboards must be synchronized with this one.
-        self.occupied.make_move(target, origin);
+impl BoardPieces {
+    pub fn empty() -> Self {
+        Self { pieces: [None; 64] }
     }
 
-    pub fn make_move(&mut self, chess_move: Move) {
-        match chess_move {
-            Move::Regular {
-                origin,
-                target,
-                piece_kind,
-                ..
-            } => self.move_piece(piece_kind, origin, target),
-            Move::Promotion {
-                origin,
-                target,
-                promotion_to,
-            } => {
-                self.kill_piece(origin, PieceKind::Pawn);
-                self.get_bitboard(promotion_to).toggle_bit(target);
-            }
-            Move::CastleKS => {
-                self.move_piece(
-                    PieceKind::King,
-                    Square::try_from("e1").unwrap(),
-                    Square::try_from("g1").unwrap(),
-                );
-                self.move_piece(
-                    PieceKind::Rook,
-                    Square::try_from("h1").unwrap(),
-                    Square::try_from("f1").unwrap(),
-                );
-            }
-            Move::CastleQS => {
-                self.move_piece(
-                    PieceKind::King,
-                    Square::try_from("e1").unwrap(),
-                    Square::try_from("c1").unwrap(),
-                );
-                self.move_piece(
-                    PieceKind::Rook,
-                    Square::try_from("a1").unwrap(),
-                    Square::try_from("d1").unwrap(),
-                );
-            }
-        }
+    pub fn get_piece(&self, square: Square) -> &Option<Piece> {
+        &self.pieces[square]
     }
 
-    pub fn kill_piece(&mut self, position: Square, piece_kind: PieceKind) {
-        self.get_bitboard(piece_kind).toggle_bit(position);
+    pub fn get_mut_piece(&mut self, square: Square) -> &mut Option<Piece> {
+        &mut self.pieces[square]
+    }
 
-        // All the bitboards must be synchronized with this one.
-        self.occupied.toggle_bit(position);
+    pub fn remove_piece(&mut self, square: Square) {
+        *self.get_mut_piece(square) = None;
+    }
+
+    pub fn move_piece(&mut self, origin: Square, target: Square) {
+        self.pieces.swap(origin.0 as usize, target.0 as usize);
+        self.pieces[origin] = None;
     }
 }
 
@@ -155,375 +111,309 @@ impl PlayerState {
 pub struct Board {
     pub active: PlayerState,
     pub inactive: PlayerState,
-    pub player_to_play: Player,
-    pub en_passant: BitBoard,
-    pub board_state: [Option<Piece>; 64],
+    pub current_player: Player,
+    pub ep_capture_point: BitBoard,
+    pub pieces: BoardPieces,
+    pub half_moves: u32,
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        let starting_position = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+        Self::from_str(starting_position).unwrap()
+    }
 }
 
 impl Board {
-    pub fn new() -> Self {
-        let mut board = Self {
-            active: PlayerState::new(Player::White),
-            inactive: PlayerState::new(Player::Black),
-            player_to_play: Player::White,
-            en_passant: BitBoard::empty(),
-            board_state: [None; 64],
+    // It is faster to update pins (which are caused by a sliding piece) and the check mask (effected by said sliding pieces) together.
+    // For that reason, the term SCM (Sliding Check Mask) is used.
+    // NOTICE: This function is assumed to be ran before "update_non_sliding_cm".
+    pub fn update_pins_and_scm(&mut self) {
+        // The en-passant position is based on the side that last moved. In other words, the side which is opposite to the current one.
+        let ep_pawn = match self.current_player {
+            Player::White => self.ep_capture_point.move_down(1),
+            Player::Black => self.ep_capture_point.move_up(1),
         };
+        let super_piece = self.active.king;
+        let diagonal_attackers = self.inactive.queens | self.inactive.bishops;
+        let cross_attackers = self.inactive.queens | self.inactive.rooks;
 
-        for square in 0..64 {
-            board.board_state[square as usize] = board.get_piece_slow(Square(square));
+        // I ignore the En-Passant pawn since It's needed in some special checks (because the capture point of the En-Passant differs to the captured piece's position).
+        let empty_squares = !self.inactive.pieces | ep_pawn;
+
+        // This is a dirty macro in order to speed up the updates.
+        // It returns from the top level function (this) once it has determined the king already has to move.
+        macro_rules! update {
+            ($ray:expr, $possible_casters:expr, $pin_mask:expr, $check_ep:literal) => {{
+                let ray = $ray;
+
+                if (ray & ($possible_casters)).is_empty() {
+                    // No check or pin can be done!
+                } else if (ray & ep_pawn).is_empty() {
+                    // If we are here, that means no enemy piece blocks the ray (and that the ray actually exists).
+                    let blocking = ray & self.active.pieces;
+
+                    if blocking.is_single_1() {
+                        // We found a pin!
+                        $pin_mask |= ray
+                    } else if blocking.is_empty() {
+                        // We found a check!
+                        if self.active.isnt_in_check() {
+                            self.active.check_mask = ray;
+                        } else {
+                            // If the king already has to move, all other check/pin data is useless.
+                            self.active.king_must_move = true;
+                            return;
+                        }
+                    }
+                } else if $check_ep { // If the ray is blocked by the en-passant pawn, it cannot be captured, as a pin would be broken (based on the "check_ep" flag).
+                    self.ep_capture_point = BitBoard::empty();
+                }
+            }};
         }
 
-        board
+        // Now, we use the update macro to update the pins and check mask.
+        {
+            update!(
+                get_up_attacks(super_piece, empty_squares),
+                cross_attackers,
+                self.active.pins.vertical,
+                false
+            );
+
+            update!(
+                get_up_right_attacks(super_piece, empty_squares),
+                diagonal_attackers,
+                self.active.pins.diagonal,
+                true
+            );
+
+            update!(
+                get_right_attacks(super_piece, empty_squares),
+                cross_attackers,
+                self.active.pins.horizontal,
+                true
+            );
+
+            update!(
+                get_down_right_attacks(super_piece, empty_squares),
+                diagonal_attackers,
+                self.active.pins.anti_diagonal,
+                true
+            );
+
+            update!(
+                get_down_attacks(super_piece, empty_squares),
+                cross_attackers,
+                self.active.pins.vertical,
+                true
+            );
+
+            update!(
+                get_down_left_attacks(super_piece, empty_squares),
+                diagonal_attackers,
+                self.active.pins.diagonal,
+                true
+            );
+
+            update!(
+                get_left_attacks(super_piece, empty_squares),
+                cross_attackers,
+                self.active.pins.horizontal,
+                true
+            );
+
+            update!(
+                get_up_left_attacks(super_piece, empty_squares),
+                diagonal_attackers,
+                self.active.pins.anti_diagonal,
+                true
+            );
+        }
     }
 
-    pub fn switch_players(&mut self) {
-        mem::swap(&mut self.active, &mut self.inactive);
-        self.player_to_play = match self.player_to_play {
-            Player::White => Player::Black,
-            Player::Black => Player::White,
+    pub fn update_non_sliding_cm(&mut self) {
+        if self.active.king_must_move {
+            return;
         }
+
+        // The non-sliding attackers have to be either knights or pawns.
+        let attackers = (KNIGHT_MOVES[self.active.king.first_one_square()] & self.inactive.knights)
+            | (match self.current_player {
+                // The movement is inverse to the current player, since we are attacked by the inactive one.
+                Player::White => self.active.king.move_up_left() | self.active.king.move_up_right(),
+                Player::Black => {
+                    self.active.king.move_down_left() | self.active.king.move_down_right()
+                }
+            } & self.inactive.pawns);
+
+        if attackers.is_single_1() {
+            if self.active.isnt_in_check() {
+                self.active.check_mask = attackers;
+            } else {
+                self.active.king_must_move = true;
+            }
+        } else if attackers.isnt_empty() {
+            // If this is true, there must be two attackers or more.
+            self.active.king_must_move = true;
+        }
+    }
+
+    // This function will update the pins and check mask of the current side.
+    // It will also compute the attacks against the current side.
+    // All of these are needed to ensure moves generated later are indeed legal.
+    pub fn update_move_constraints(&mut self) {
+        self.active.king_must_move = false;
+        self.active.pins = Pins::new();
+        self.active.check_mask = BitBoard::full();
+
+        AttackGen::run(self);
+        self.update_pins_and_scm();
+        self.update_non_sliding_cm();
+    }
+
+    pub fn switch_sides(&mut self) {
+        mem::swap(&mut self.active, &mut self.inactive);
+
+        self.current_player = !self.current_player;
     }
 
     pub fn make_move(&mut self, chess_move: Move) {
-        self.active.make_move(chess_move);
-
         match chess_move {
+            Move::EnPassant { origin } => {
+                let captured_square = self.ep_capture_point.first_one_square();
+                let move_to = match self.current_player {
+                    Player::White => captured_square.move_up(1),
+                    Player::Black => captured_square.move_down(1),
+                };
+
+                self.active.move_piece(PieceKind::Pawn, origin, move_to);
+                self.inactive.remove_piece(PieceKind::Pawn, captured_square);
+
+                // We must keep the board pieces in-sync with the actual board representation.
+                self.pieces.move_piece(origin, move_to);
+                self.pieces.remove_piece(captured_square);
+
+                self.ep_capture_point = BitBoard::empty(); // The en-passant square must be reset (or set again) after each move, since it has a single move timeframe.
+            }
             Move::Regular {
                 origin,
                 target,
-                is_en_passant,
                 piece_kind,
+                double_push,
             } => {
                 if piece_kind == PieceKind::King {
+                    // If the king is moved, castling rights are revoked.
                     self.active.can_castle_ks = false;
                     self.active.can_castle_qs = false;
                 }
 
-                let captured_square = if is_en_passant {
-                    match self.player_to_play {
+                // If the moving squares are the starting positions of either rook, that rook must have either been captured or moved now, or previously.
+                // In either case we can revoke castling rights.
+                // NOTICE: Both pairs of rook positions must be accounted for here
+                if LEFT_ROOK_ORIGINS.contains(&origin) || LEFT_ROOK_ORIGINS.contains(&target) {
+                    self.active.can_castle_qs = false;
+                } else if RIGHT_ROOK_ORIGINS.contains(&origin)
+                    || RIGHT_ROOK_ORIGINS.contains(&target)
+                {
+                    self.active.can_castle_ks = false;
+                }
+
+                self.active.move_piece(piece_kind, origin, target);
+
+                if let &Some(Piece { piece_kind, .. }) = self.pieces.get_piece(target) {
+                    self.inactive.remove_piece(piece_kind, target)
+                }
+
+                self.pieces.move_piece(origin, target); // We must keep the board pieces in-sync with the actual board representation.
+
+                // The en-passant square must be reset (or set again) after each move, since it has a single move timeframe.
+                self.ep_capture_point = if double_push {
+                    BitBoard::from(match self.current_player {
                         Player::White => target.move_down(1),
                         Player::Black => target.move_up(1),
-                    }
+                    })
                 } else {
-                    target
+                    BitBoard::empty()
                 };
-
-                if let Some(Piece { piece_kind, .. }) = self.get_piece(captured_square) {
-                    // If the move was a capture, we should also update the enemy player's state.
-                    self.inactive.kill_piece(captured_square, piece_kind);
-                    self.board_state[captured_square.0 as usize] = None;
-                }
-
-                // If the origin or target is on A1 either the rook died. moved previously, is being captured or is moving now.
-                // All of these do or did remove the ability to castle queen side.
-                if origin == Square::A1 || target == Square::A1 {
-                    self.active.can_castle_qs = false;
-                }
-                // Same case for the rook on A8.
-                else if origin == Square::A8 || target == Square::A8 {
-                    self.active.can_castle_ks = false;
-                }
-
-                // When we make a move, we must update the board state. It is not generated from scratch each time! It is updated, incrementally.
-                self.board_state.swap(origin.0 as usize, target.0 as usize);
             }
             Move::Promotion {
                 origin,
                 target,
                 promotion_to,
             } => {
-                // If the move was a capture, we should also update the enemy player's state.
-                if let Some(Piece { piece_kind, .. }) = self.get_piece(target) {
-                    self.inactive.kill_piece(target, piece_kind);
+                self.active.remove_piece(PieceKind::Pawn, origin);
+                self.active.place_piece(promotion_to, target);
+
+                if let &Some(Piece { piece_kind, .. }) = self.pieces.get_piece(target) {
+                    self.inactive.remove_piece(piece_kind, target)
                 }
 
-                // When we make a move, we must update the board state. It is not generated from scratch each time! It is updated, incrementally.
-                self.board_state[target.0 as usize] = Some(Piece {
-                    piece_kind: promotion_to,
-                    player: self.player_to_play,
-                });
-                self.board_state[origin.0 as usize] = None;
+                // We must keep the board pieces in-sync with the actual board representation.
+                self.pieces.move_piece(origin, target);
+                self.pieces.get_mut_piece(target).unwrap().piece_kind = promotion_to;
+
+                self.ep_capture_point = BitBoard::empty(); // The en-passant square must be reset (or set again) after each move, since it has a single move timeframe.
             }
-            _ => (),
-        }
+            Move::CastleKS => {
+                match self.current_player {
+                    Player::White => {
+                        let king_to = Square::G1;
+                        let rook_to = Square::F1;
 
-        // They are all needed so the inactive player won't make an illegal move next turn.
-        // Before we switch, we need to generate the active player's attacks and the pins + check mask of the inactive player.
-        self.active.king_must_move = false; // If the king had to move this turn, it no longer has to.
+                        self.active.move_piece(PieceKind::King, Square::E1, king_to);
+                        self.pieces.move_piece(Square::E1, king_to);
 
-        // The active player could have created a pin! If that's the case, that will effect his attacks and we must account for that.
-        // The active player couldn't have created a check on himself, since otherwise it would be mate.
-        self.update_active_pins();
-        AttackGen::run(self);
-        self.update_pins_and_cm();
+                        self.active.move_piece(PieceKind::King, Square::H1, rook_to);
+                        self.pieces.move_piece(Square::H1, rook_to);
+                    }
+                    Player::Black => {
+                        let king_to = Square::G8;
+                        let rook_to = Square::F8;
 
-        self.switch_players();
-    }
+                        self.active.move_piece(PieceKind::King, Square::E8, king_to);
+                        self.pieces.move_piece(Square::E8, king_to);
 
-    // NOTICE: Make sure this and "update_pins_and_cm" are synced!
-    fn update_active_pins(&mut self) {
-        self.active.pins = Pins::new();
-
-        let super_piece = self.active.king;
-
-        let empty_squares = !self.inactive.occupied; // We want the ray to stop upon hitting any enemy piece, and then we just make sure it was indeed a possible caster.
-        let hv_atackers = self.inactive.rooks | self.inactive.queens;
-        let diag_attackers = self.inactive.bishops | self.inactive.queens;
-
-        // This function is here to avoid duplication of code.
-        let update_with_ray =
-            |pin_mask: &mut BitBoard, ray: BitBoard, possible_casters: BitBoard| {
-                /*
-                If this is true, it means that the ray did come from a caster (and only one, since it terminates upon encountering them).
-
-                We also check here if the enemy king has to move. If it does, then there is no need to compute any pins. They won't be useful.
-                Technically speaking, it's a bit wasteful to run this check each function call. But it's extremely minor.
-                */
-                if (ray & possible_casters).is_single_1() {
-                    let in_ray = self.active.occupied & ray;
-
-                    // If this is true, it means the one piece that is on the ray's path, is pinned.
-                    if in_ray.is_single_1() {
-                        *pin_mask |= ray; // It is important that the ray include the piece casting it.
+                        self.active.move_piece(PieceKind::King, Square::H8, rook_to);
+                        self.pieces.move_piece(Square::H8, rook_to);
                     }
                 }
-            };
 
-        // First, we take care of the sliding pieces.
-        update_with_ray(
-            &mut self.active.pins.vertical,
-            slides::get_up_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.diagonal,
-            slides::get_up_right_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.horizontal,
-            slides::get_right_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.anti_diagonal,
-            slides::get_down_right_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.vertical,
-            slides::get_down_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.diagonal,
-            slides::get_down_left_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.horizontal,
-            slides::get_left_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.active.pins.anti_diagonal,
-            slides::get_up_left_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-    }
+                self.active.can_castle_ks = false;
+                self.ep_capture_point = BitBoard::empty(); // The en-passant square must be reset (or set again) after each move, since it has a single move timeframe.
+            }
+            Move::CastleQS => {
+                match self.current_player {
+                    Player::White => {
+                        let king_to = Square::C1;
+                        let rook_to = Square::D1;
 
-    fn update_pins_and_cm(&mut self) {
-        self.inactive.king_must_move = false;
-        self.inactive.pins = Pins::new();
-        self.inactive.check_mask = BitBoard::full();
+                        self.active.move_piece(PieceKind::King, Square::E1, king_to);
+                        self.pieces.move_piece(Square::E1, king_to);
 
-        // The order here matters as the first update in "update_non_sliding_cm" doesn't check if the king has already moved.
-        self.update_non_sliding_cm();
-        self.update_sliding_pins_and_cm()
-    }
+                        self.active.move_piece(PieceKind::King, Square::A1, rook_to);
+                        self.pieces.move_piece(Square::A1, rook_to);
+                    }
+                    Player::Black => {
+                        let king_to = Square::C8;
+                        let rook_to = Square::D8;
 
-    fn update_sliding_pins_and_cm(&mut self) {
-        let super_piece = self.inactive.king;
+                        self.active.move_piece(PieceKind::King, Square::E8, king_to);
+                        self.pieces.move_piece(Square::E8, king_to);
 
-        let empty_squares = !self.active.occupied; // We want the ray to stop upon hitting any enemy piece, and then we just make sure it was indeed a possible caster.
-        let hv_atackers = self.active.rooks | self.active.queens;
-        let diag_attackers = self.active.bishops | self.active.queens;
-
-        // This function is here to avoid duplication of code.
-        let mut update_with_ray =
-            |pin_mask: &mut BitBoard, ray: BitBoard, possible_casters: BitBoard| {
-                /*
-                If this is true, it means that the ray did come from a caster (and only one, since it terminates upon encountering them).
-
-                We also check here if the enemy king has to move. If it does, then there is no need to compute any pins. They won't be useful.
-                Technically speaking, it's a bit wasteful to run this check each function call. But it's extremely minor.
-                */
-                if !self.inactive.king_must_move && (ray & possible_casters).is_single_1() {
-                    let in_ray = self.inactive.occupied & ray;
-
-                    // If this is true, it means the one piece that is on the ray's path, is pinned.
-                    // Otherwise, there is an attack on the king, and thus it is in check!
-                    if in_ray.is_single_1() {
-                        *pin_mask |= ray; // It is important that the ray include the piece casting it.
-                    } else if in_ray.is_empty() {
-                        // In this case, I inline "update_check" since Rust doesn't reason about borrows across function boundaries.
-                        // We are in a state of double-check if the second branch is taken.
-                        if self.inactive.check_mask.is_full() {
-                            self.inactive.check_mask = ray;
-                        } else {
-                            self.inactive.king_must_move = true;
-                        }
+                        self.active.move_piece(PieceKind::King, Square::A8, rook_to);
+                        self.pieces.move_piece(Square::A8, rook_to);
                     }
                 }
-            };
 
-        // First, we take care of the sliding pieces.
-        update_with_ray(
-            &mut self.inactive.pins.vertical,
-            slides::get_up_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.diagonal,
-            slides::get_up_right_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.horizontal,
-            slides::get_right_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.anti_diagonal,
-            slides::get_down_right_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.vertical,
-            slides::get_down_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.diagonal,
-            slides::get_down_left_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.horizontal,
-            slides::get_left_attacks(super_piece, empty_squares),
-            hv_atackers,
-        );
-        update_with_ray(
-            &mut self.inactive.pins.anti_diagonal,
-            slides::get_up_left_attacks(super_piece, empty_squares),
-            diag_attackers,
-        );
-    }
-
-    fn update_non_sliding_cm(&mut self) {
-        let king_position = self.inactive.king.clone().pop_first_one().0;
-
-        let attacking_knights = KNIGHT_MOVES[king_position as usize] & self.active.knights;
-
-        match attacking_knights.count_ones() {
-            0 => (),
-            1 => self.inactive.update_check(attacking_knights),
-            _ => self.inactive.king_must_move = true,
-        }
-
-        if !self.inactive.king_must_move {
-            // This is reversed since we are checking the attacks on the inactive player.
-            let left_pawn = match self.player_to_play {
-                Player::Black => self.inactive.king.move_up_left(),
-                Player::White => self.inactive.king.move_down_left(),
-            } & self.active.pawns;
-
-            if left_pawn.is_not_empty() {
-                self.inactive.update_check(left_pawn)
+                self.active.can_castle_qs = false;
+                self.ep_capture_point = BitBoard::empty(); // The en-passant square must be reset (or set again) after each move, since it has a single move timeframe.
             }
-        }
+        };
 
-        if !self.inactive.king_must_move {
-            // This is reversed since we are checking the attacks on the inactive player.
-            let right_pawn = match self.player_to_play {
-                Player::Black => self.inactive.king.move_up_right(),
-                Player::White => self.inactive.king.move_down_right(),
-            } & self.active.pawns;
-
-            if right_pawn.is_not_empty() {
-                self.inactive.update_check(right_pawn)
-            }
-        }
-    }
-
-    fn get_piece_slow(&self, position: Square) -> Option<Piece> {
-        if self.active.king.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::King,
-                player: Player::White,
-            })
-        } else if self.active.queens.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Queen,
-                player: Player::White,
-            })
-        } else if self.active.rooks.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Rook,
-                player: Player::White,
-            })
-        } else if self.active.bishops.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Bishop,
-                player: Player::White,
-            })
-        } else if self.active.knights.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Knight,
-                player: Player::White,
-            })
-        } else if self.active.pawns.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Pawn,
-                player: Player::White,
-            })
-        } else if self.inactive.king.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::King,
-                player: Player::Black,
-            })
-        } else if self.inactive.queens.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Queen,
-                player: Player::Black,
-            })
-        } else if self.inactive.rooks.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Rook,
-                player: Player::Black,
-            })
-        } else if self.inactive.bishops.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Bishop,
-                player: Player::Black,
-            })
-        } else if self.inactive.knights.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Knight,
-                player: Player::Black,
-            })
-        } else if self.inactive.pawns.get_bit(position) {
-            Some(Piece {
-                piece_kind: PieceKind::Pawn,
-                player: Player::Black,
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn get_piece(&self, position: Square) -> Option<Piece> {
-        self.board_state[position.0 as usize]
+        // The move constraints are updated for the current player. The player about to play needs that data.
+        self.switch_sides();
+        self.update_move_constraints();
     }
 }

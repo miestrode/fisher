@@ -1,4 +1,8 @@
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+    str::FromStr,
+};
 
 use crate::{
     game::board::{Board, PlayerState},
@@ -11,6 +15,20 @@ pub mod slides;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Square(pub u32);
+
+impl<T> Index<Square> for [T; 64] {
+    type Output = T;
+
+    fn index(&self, index: Square) -> &Self::Output {
+        &self[index.0 as usize]
+    }
+}
+
+impl<T> IndexMut<Square> for [T; 64] {
+    fn index_mut(&mut self, index: Square) -> &mut Self::Output {
+        &mut self[index.0 as usize]
+    }
+}
 
 impl Square {
     pub const A1: Square = Square(0b000000);
@@ -101,6 +119,10 @@ impl Square {
     pub fn move_down_right(self, amount: u32) -> Square {
         Square(self.0 - 7 * amount)
     }
+
+    pub fn get_row(&self) -> u32 {
+        self.0 / 8
+    }
 }
 
 impl TryFrom<&str> for Square {
@@ -140,7 +162,10 @@ pub enum Move {
         origin: Square,
         target: Square,
         piece_kind: PieceKind,
-        is_en_passant: bool,
+        double_push: bool,
+    },
+    EnPassant {
+        origin: Square,
     },
     Promotion {
         origin: Square,
@@ -151,35 +176,74 @@ pub enum Move {
     CastleQS,
 }
 
+impl FromStr for Move {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ks" => Ok(Move::CastleKS),
+            "qs" => Ok(Move::CastleQS),
+            _ => Square::from_str(s)
+                .map(|square| Move::EnPassant { origin: square })
+                .or_else(|_| {
+                    if s.len() == 5 {
+                        let piece_kind = PieceKind::from_str(&s[0..1])?;
+                        let origin = Square::from_str(&s[1..3])?;
+                        let target = Square::from_str(&s[3..5])?;
+
+                        Ok(Move::Regular {
+                            origin,
+                            target,
+                            piece_kind,
+                            double_push: target.get_row() == 2,
+                        })
+                    } else if s.len() == 6 && &s[4..5] == "=" {
+                        let origin = Square::from_str(&s[0..2])?;
+                        let target = Square::from_str(&s[2..4])?;
+                        let promotion_to = PieceKind::from_str(&s[5..6])?;
+
+                        Ok(Move::Promotion {
+                            origin,
+                            target,
+                            promotion_to,
+                        })
+                    } else {
+                        Err("Input is not a valid move")
+                    }
+                }),
+        }
+    }
+}
+
 pub struct AttackGen<'brd> {
-    active: PlayerState,
+    inactive: PlayerState,
     empty_squares: BitBoard,
     attacks: &'brd mut BitBoard,
 }
 
 impl<'brd> AttackGen<'brd> {
     pub fn run(board: &'brd mut Board) {
-        board.active.attacks = BitBoard::empty();
+        board.inactive.attacks = BitBoard::empty();
 
         Self {
-            active: board.active,
-            // We remove the inactive player's king from the empty Positionuares since A piece cannot protect itself from a ray.
-            empty_squares: !((board.active.occupied | board.inactive.occupied)
-                ^ board.inactive.king),
-            attacks: &mut board.active.attacks,
+            inactive: board.inactive,
+            // NOTICE: The king is ignored as a piece, since the attacks are supposed to show all attacked squares (when the king isn't on the board).
+            // They do that since when the king is attacked by a sliding piece, we don't want him to retreat in the direction of the attacking slide.
+            empty_squares: !(board.active.pieces | board.inactive.pieces) | board.active.king,
+            attacks: &mut board.inactive.attacks,
         }
-        .gen_attacks(board.player_to_play);
+        .gen_attacks(!board.current_player); // The current player is the one being attacked, so we actually need the inactive player's color.
     }
 
-    fn gen_attacks(&mut self, player_to_play: Player) {
-        // All the pieces move no matter what, since both the check mask and the KMM flag must have been satisfied.
+    fn gen_attacks(&mut self, attacking_player: Player) {
+        // All the pieces move no matter what, since both the check mask and the KMM flag must have been satisfied. (We were attacked by the player that last moved).
         self.gen_king_attacks();
         self.gen_queen_attacks();
         self.gen_rook_attacks();
         self.gen_bishop_attacks();
         self.gen_knight_attacks();
 
-        match player_to_play {
+        match attacking_player {
             Player::White => self.gen_white_pawn_attacks(),
             Player::Black => self.gen_black_pawn_attacks(),
         }
@@ -190,7 +254,7 @@ pub struct MoveGen {
     active: PlayerState,
     inactive: PlayerState,
     empty_squares: BitBoard,
-    en_passant: BitBoard,
+    ep_capture_point: BitBoard,
     moves: Vec<Move>,
 }
 
@@ -199,12 +263,12 @@ impl MoveGen {
         let mut move_gen = Self {
             active: board.active,
             inactive: board.inactive,
-            empty_squares: !(board.active.occupied | board.inactive.occupied),
-            en_passant: board.en_passant,
+            empty_squares: !(board.active.pieces | board.inactive.pieces),
+            ep_capture_point: board.ep_capture_point,
             moves: Vec::with_capacity(31), // Chess has a branching factor of 31 on average.
         };
 
-        move_gen.gen_moves(board.player_to_play);
+        move_gen.gen_moves(board.current_player);
 
         move_gen.moves
     }
@@ -220,14 +284,7 @@ impl MoveGen {
     }
 
     fn gen_moves(&mut self, player_to_play: Player) {
-        self.gen_king_moves();
-
         if !self.active.king_must_move {
-            self.gen_queen_moves();
-            self.gen_rook_moves();
-            self.gen_bishop_moves();
-            self.gen_knight_moves();
-
             match player_to_play {
                 Player::White => {
                     self.gen_white_pawn_pushes();
@@ -241,10 +298,18 @@ impl MoveGen {
                 }
             }
 
-            if self.active.check_mask.is_full() {
+            self.gen_knight_moves();
+            self.gen_bishop_moves();
+            self.gen_rook_moves();
+            self.gen_queen_moves();
+
+            // Even though castling is a king move, it cannot happen during check (The above conditional checks if the king is in double check).
+            if self.active.isnt_in_check() {
                 self.castle_king_side();
                 self.castle_queen_side();
             }
         }
+
+        self.gen_king_moves();
     }
 }
