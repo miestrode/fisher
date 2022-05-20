@@ -2,7 +2,7 @@ use std::{mem, str::FromStr};
 
 use crate::{generators::Square, BitBoard, Piece, Player};
 
-use super::board::{Board, BoardPieces, PlayerState};
+use super::board::{Board, BoardPieces, EnPassant, PlayerState};
 
 impl FromStr for BoardPieces {
     type Err = &'static str;
@@ -130,69 +130,78 @@ impl FromStr for Board {
         } else {
             let board_pieces = BoardPieces::from_str(parts[0])?;
             let current_player = Player::from_str(parts[1])?;
+
             let ep_capture_point = match parts[3] {
                 "-" => BitBoard::empty(),
                 square => Square::from_str(square)?.into(),
             };
-            let half_moves = parts[4]
-                .parse::<u32>()
-                .map_err(|_| "Input contains invalid number for half-moves")?;
 
-            // The full moves aren't actually needed anywhere.
+            let ep_pawn = match current_player {
+                Player::White => ep_capture_point.move_down(1),
+                Player::Black => ep_capture_point.move_up(1),
+            };
+
+            // These values currently aren't needed anywhere.
+            if let Err(_) = parts[4].parse::<u32>() {
+                return Err("Input contains invalid number for half-moves");
+            }
             if let Err(_) = parts[5].parse::<u32>() {
                 return Err("Input contains invalid number for full-moves");
             }
 
-            let mut active = PlayerState::blank();
+            let mut moving_player = PlayerState::blank();
             for (square_index, piece) in board_pieces.pieces.into_iter().enumerate() {
                 if let Some(Piece {
                     piece_kind,
                     player: Player::White,
                 }) = piece
                 {
-                    active.place_piece(piece_kind, Square(square_index as u32))
+                    moving_player.place_piece(piece_kind, Square(square_index as u32))
                 }
             }
 
-            let mut inactive = PlayerState::blank();
+            let mut moved_player = PlayerState::blank();
             for (square_index, piece) in board_pieces.pieces.into_iter().enumerate() {
                 if let Some(Piece {
                     piece_kind,
                     player: Player::Black,
                 }) = piece
                 {
-                    inactive.place_piece(piece_kind, Square(square_index as u32))
+                    moved_player.place_piece(piece_kind, Square(square_index as u32))
                 }
             }
 
             if parts[2] != "-" {
-                active.can_castle_ks = parts[2].contains("K");
-                active.can_castle_qs = parts[2].contains("Q");
-                inactive.can_castle_ks = parts[2].contains("k");
-                inactive.can_castle_qs = parts[2].contains("q");
+                moving_player.can_castle_ks = parts[2].contains("K");
+                moving_player.can_castle_qs = parts[2].contains("Q");
+                moved_player.can_castle_ks = parts[2].contains("k");
+                moved_player.can_castle_qs = parts[2].contains("q");
 
-                // "This would indicate a blank state, however we already accounted for that in the first condition.
-                if !(active.can_castle_ks
-                    | active.can_castle_qs
-                    | inactive.can_castle_ks
-                    | inactive.can_castle_qs)
+                // This would indicate the part contains some characters other than K, Q, k or q.
+                if (moving_player.can_castle_ks as usize
+                    + moving_player.can_castle_qs as usize
+                    + moved_player.can_castle_ks as usize
+                    + moved_player.can_castle_qs as usize)
+                    != parts[2].len()
                 {
                     return Err("Input contains invalid data for castling information");
                 }
             }
 
-            // So far "active" and "inactive" were used as white and black. This is of course not actually true, and this code fixes that.
+            // So far "moving_player" and "moved_player" were used as white and black. This is of course not actually true, and this code fixes that.
             if current_player == Player::Black {
-                mem::swap(&mut active, &mut inactive);
+                mem::swap(&mut moving_player, &mut moved_player);
             }
 
             let mut board = Board {
-                active,
-                inactive,
+                moving_player,
+                moved_player,
                 current_player,
-                ep_capture_point,
+                ep_info: EnPassant {
+                    capture_point: ep_capture_point,
+                    pawn: ep_pawn,
+                },
                 pieces: board_pieces,
-                half_moves,
             };
 
             board.update_move_constraints();

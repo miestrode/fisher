@@ -55,11 +55,11 @@ impl Display for Board {
 // TODO: Refactor this.
 impl Debug for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let occupied = self.active.pieces | self.inactive.pieces;
-        let current_attacks = self.inactive.attacks;
-        let illegal_squares = !self.active.check_mask;
-        let pinned_squares = self.active.pins.get_all_pins();
-        let ep_square = self.ep_capture_point;
+        let occupied = self.moving_player.pieces | self.moved_player.pieces;
+        let current_attacks = self.moved_player.attacks;
+        let illegal_squares = !self.moving_player.check_mask;
+        let pinned_squares = self.moving_player.pins.get_all_pins();
+        let ep_square = self.ep_info.capture_point;
 
         // The order of reading of the board should be from top left to bottom right so we can't just go over all the squares linearly.
         // I.E: "0, 1, 2, ... 62, 63" won't work.

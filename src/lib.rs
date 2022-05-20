@@ -1,4 +1,6 @@
-#![feature(const_trait_impl, const_for, const_mut_refs)]
+#![feature(const_trait_impl, const_for, const_mut_refs, test)]
+
+extern crate test;
 
 use std::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Not, Shl, Shr, Sub},
@@ -7,6 +9,7 @@ use std::{
 
 use game::board::Board;
 use generators::Square;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::generators::MoveGen;
 
@@ -23,8 +26,10 @@ pub const PROMOTION_PIECES: [PieceKind; 4] = [
     PieceKind::Knight,
 ];
 
-pub const LEFT_ROOK_ORIGINS: [Square; 2] = [Square::A1, Square::A8];
-pub const RIGHT_ROOK_ORIGINS: [Square; 2] = [Square::H1, Square::H8];
+pub const WHITE_LEFT_ROOK_ORIGIN: Square = Square::A1;
+pub const WHITE_RIGHT_ROOK_ORIGIN: Square = Square::H1;
+pub const BLACK_LEFT_ROOK_ORIGIN: Square = Square::A8;
+pub const BLACK_RIGHT_ROOK_ORIGIN: Square = Square::H8;
 
 pub const NOT_H_FILE: BitBoard =
     BitBoard(0b0111111101111111011111110111111101111111011111110111111101111111);
@@ -40,10 +45,19 @@ pub const FIRST_RANK: BitBoard =
 pub const EIGHTH_RANK: BitBoard =
     BitBoard(0b1111111100000000000000000000000000000000000000000000000000000000);
 
-pub const CASTLE_KS_SPACE: BitBoard =
+// See: https://en.wikipedia.org/wiki/Castling
+pub const W_CASTLE_KS_SPACE: BitBoard =
     BitBoard(0b0000000000000000000000000000000000000000000000000000000001100000);
-pub const CASTLE_QS_SPACE: BitBoard =
+pub const W_CASTLE_QS_SPACE: BitBoard =
     BitBoard(0b0000000000000000000000000000000000000000000000000000000000001110);
+pub const W_CASTLE_QS_KING_PASS: BitBoard =
+    BitBoard(0b0000000000000000000000000000000000000000000000000000000000001100);
+pub const B_CASTLE_KS_SPACE: BitBoard =
+    BitBoard(0b0110000000000000000000000000000000000000000000000000000000000000);
+pub const B_CASTLE_QS_SPACE: BitBoard =
+    BitBoard(0b0000111000000000000000000000000000000000000000000000000000000000);
+pub const B_CASTLE_QS_KING_PASS: BitBoard =
+    BitBoard(0b0000110000000000000000000000000000000000000000000000000000000000);
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct BitBoard(pub u64);
@@ -91,6 +105,11 @@ impl BitBoard {
     // TODO: Same idea as above! Make sure this works.
     pub fn smear_zeroes_down(self) -> Self {
         self & self.move_down(1)
+    }
+
+    // This function will make sure all of the switched bits in "self" have a switched-off bit in "mask".
+    pub fn does_contain_none(&self, mask: Self) -> bool {
+        (*self - mask) == *self
     }
 
     pub fn first_one_square(&self) -> Square {
@@ -268,7 +287,7 @@ impl const Sub<BitBoard> for BitBoard {
     type Output = BitBoard;
 
     fn sub(self, rhs: BitBoard) -> Self::Output {
-        self & rhs ^ self
+        self & !rhs
     }
 }
 
@@ -462,17 +481,19 @@ pub fn divide(board: Board, depth: u32) -> u32 {
         .map(|chess_move| {
             let mut board_copy = board;
 
-            board_copy.make_move(chess_move);
-            let found = search_inner(board_copy, depth - 1);
+            print!("{}: ", chess_move); // This means the move will print out even if the nested search fails somehow.
 
-            println!("{}: {}", chess_move, found);
+            board_copy.make_move(chess_move);
+            let found = search(board_copy, depth - 1);
+
+            println!("{}", found);
 
             found
         })
         .sum()
 }
 
-fn search_inner(board: Board, depth: u32) -> u32 {
+pub fn search(board: Board, depth: u32) -> u32 {
     let moves = MoveGen::run(board);
 
     if depth == 0 {
@@ -484,14 +505,89 @@ fn search_inner(board: Board, depth: u32) -> u32 {
         0
     } else {
         moves
-            .into_iter()
+            .into_par_iter()
             .map(|chess_move| {
                 let mut board_copy = board;
 
                 board_copy.make_move(chess_move);
 
-                search_inner(board_copy, depth - 1)
+                search(board_copy, depth - 1)
             })
             .sum()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[test]
+    // See: https://en.wikipedia.org/wiki/Shannon_number
+    fn default_pos_depth_3() {
+        assert_eq!(search(Board::default(), 3), 8902)
+    }
+
+    #[test]
+    // As above, see: https://en.wikipedia.org/wiki/Shannon_number
+    fn default_pos_depth_6() {
+        assert_eq!(search(Board::default(), 6), 119060324)
+    }
+
+    #[test]
+    // As above.
+    fn default_pos_depth_7() {
+        assert_eq!(search(Board::default(), 7), 3195901860)
+    }
+
+    #[test]
+    // See: https://www.chessprogramming.org/Perft_Results
+    fn position_3_depth_6() {
+        assert_eq!(
+            search(
+                Board::from_str("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0").unwrap(),
+                6
+            ),
+            11030083
+        )
+    }
+
+    #[test]
+    // As above.
+    fn position_5_depth_3() {
+        assert_eq!(
+            search(
+                Board::from_str("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8")
+                    .unwrap(),
+                3
+            ),
+            62379
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn fen_string_oob() {
+        Board::from_str("R5pk/1Qb1bb2/3b1qpp/2r4n/P8P1P3/PPP1Pp2/P1P1P1Q1/2K5 w - - 0 1")
+            .expect("Failed to parse FEN-string");
+    }
+
+    #[bench]
+    fn bench_default_depth_3(bencher: &mut Bencher) {
+        bencher.iter(|| search(Board::default(), 3))
+    }
+
+    #[bench]
+    fn bench_default_depth_6(bencher: &mut Bencher) {
+        bencher.iter(|| search(Board::default(), 6))
+    }
+
+    #[bench]
+    fn bench_fen_parse(bencher: &mut Bencher) {
+        // For those interested, this position was taken from the following link: https://www.chess.com/forum/view/general/interesting-positions-1
+        // It was picked arbitrarily
+        bencher.iter(|| {
+            Board::from_str("r1b2r2/pp1pk1pp/8/7q/3pP1n1/5N1P/PPQ2PP1/3R1RK1 b - - 0 17").unwrap()
+        })
     }
 }
